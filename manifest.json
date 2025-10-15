@@ -15,8 +15,9 @@
     }
   ],
   "icons": {
-    "48": "images/icon.png",
-    "128": "images/icon.png"
+    "32": "images/icon_32.png",
+    "48": "images/icon_64.png",
+    "128": "images/icon_128.png"
   },
   "action": {
     "default_title": "TimeTracker"
