@@ -62,4 +62,9 @@ const interval = setInterval(async () => {
 }, 1000);
 
 // 页面卸载清理
-window.addEventListener("unload", () => clearInterval(interval));
+const cleanup = () => {
+  clearInterval(interval);
+  window.removeEventListener("pagehide", cleanup);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
+};
+window.addEventListener("pagehide", cleanup);
