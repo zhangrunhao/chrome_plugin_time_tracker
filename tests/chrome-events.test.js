@@ -45,11 +45,14 @@ function createFakeEvent() {
 function createChromeHarness({
   now = 8_000,
   analysisTabs = [],
+  queryCanSeeAnalysisTabs = true,
   windows = [],
   trackerReady = Promise.resolve(),
   storageAccessError = null,
   tabsGetReady = Promise.resolve(),
+  tabsCreateStarted = null,
   tabsCreateReady = Promise.resolve(),
+  storageState = { local: {}, session: {} },
   siteService: injectedSiteService,
 } = {}) {
   const events = {
@@ -76,7 +79,7 @@ function createChromeHarness({
     storageAccess: [],
     storageOperations: [],
   };
-  const stored = { local: {}, session: {} };
+  const stored = storageState;
   const analysisTabRecords = analysisTabs.map(tab => structuredClone(tab));
   const windowRecords = new Map(windows.map(window => [window.id, structuredClone(window)]));
   let currentNow = now;
@@ -117,14 +120,16 @@ function createChromeHarness({
       async get(tabId) {
         calls.tabsGet.push(tabId);
         await tabsGetReady;
-        return { id: tabId, windowId: 2 };
+        const analysisTab = analysisTabRecords.find(tab => tab.id === tabId);
+        return structuredClone(analysisTab ?? { id: tabId, windowId: 2 });
       },
       async query(query) {
         calls.tabsQuery.push(structuredClone(query));
-        return structuredClone(analysisTabRecords);
+        return queryCanSeeAnalysisTabs ? structuredClone(analysisTabRecords) : [];
       },
       async create(options) {
         calls.tabsCreate.push(structuredClone(options));
+        tabsCreateStarted?.resolve();
         await tabsCreateReady;
         const tab = { id: 99 + calls.tabsCreate.length, windowId: 1, ...options };
         analysisTabRecords.push(tab);
@@ -708,18 +713,18 @@ test("opens the analysis page once and focuses an existing minimized window", as
   assert.deepEqual(existingHarness.calls.tabsCreate, []);
 });
 
-test("serializes concurrent analysis-page opens and rechecks after creation", async () => {
+test("serializes concurrent analysis-page opens and reuses the created tab", async () => {
+  const createStarted = deferred();
   const createReady = deferred();
   const harness = createChromeHarness({
     analysisTabs: [],
+    tabsCreateStarted: createStarted,
     tabsCreateReady: createReady.promise,
   });
 
   const first = openOrFocusAnalysisPage(harness.chrome);
   const second = openOrFocusAnalysisPage(harness.chrome);
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  await createStarted.promise;
 
   assert.equal(harness.calls.tabsCreate.length, 1);
 
@@ -728,11 +733,112 @@ test("serializes concurrent analysis-page opens and rechecks after creation", as
   await openOrFocusAnalysisPage(harness.chrome);
 
   assert.equal(harness.calls.tabsCreate.length, 1);
-  assert.equal(harness.calls.tabsQuery.length, 3);
+  assert.equal(harness.calls.tabsQuery.length, 1);
+  assert.deepEqual(harness.calls.tabsGet, [100, 100]);
   assert.deepEqual(harness.calls.tabsUpdate, [
     { tabId: 100, update: { active: true } },
     { tabId: 100, update: { active: true } },
   ]);
+});
+
+test("reuses the created analysis tab after a service-worker restart without URL access", async () => {
+  const storageState = { local: {}, session: {} };
+  const firstWorker = createChromeHarness({
+    analysisTabs: [],
+    queryCanSeeAnalysisTabs: false,
+    storageState,
+  });
+
+  await openOrFocusAnalysisPage(firstWorker.chrome);
+  assert.equal(firstWorker.calls.tabsCreate.length, 1);
+
+  const secondWorker = createChromeHarness({
+    analysisTabs: [{ id: 100, windowId: 1 }],
+    queryCanSeeAnalysisTabs: false,
+    windows: [{ id: 1, state: "normal" }],
+    storageState,
+  });
+  await openOrFocusAnalysisPage(secondWorker.chrome);
+
+  assert.deepEqual(secondWorker.calls.tabsCreate, []);
+  assert.deepEqual(secondWorker.calls.tabsUpdate, [
+    { tabId: 100, update: { active: true } },
+  ]);
+});
+
+test("focuses a registered analysis page when Chrome hides its extension URL", async () => {
+  const harness = createChromeHarness({
+    analysisTabs: [{ id: 9, windowId: 3 }],
+    queryCanSeeAnalysisTabs: false,
+    windows: [{ id: 3, state: "normal" }],
+  });
+  registerChromeEvents(harness);
+
+  await harness.events.runtimeOnMessage.emit(
+    { type: "WEBTRACE_ANALYSIS_READY" },
+    {
+      url: "chrome-extension://test/analysis.html",
+      tab: { id: 9, windowId: 3 },
+    },
+  );
+  await harness.events.actionOnClicked.emit();
+  await harness.events.actionOnClicked.emit();
+
+  assert.deepEqual(harness.calls.tabsCreate, []);
+  assert.deepEqual(harness.calls.tabsUpdate, [
+    { tabId: 9, update: { active: true } },
+    { tabId: 9, update: { active: true } },
+  ]);
+});
+
+test("does not accept an analysis-page registration from a web page", async () => {
+  const harness = createChromeHarness({
+    analysisTabs: [{ id: 9, windowId: 3 }],
+    queryCanSeeAnalysisTabs: false,
+    windows: [{ id: 3, state: "normal" }],
+  });
+  registerChromeEvents(harness);
+
+  await harness.events.runtimeOnMessage.emit(
+    { type: "WEBTRACE_ANALYSIS_READY" },
+    {
+      url: "https://www.zhihu.com/",
+      tab: { id: 9, windowId: 3 },
+    },
+  );
+  await harness.events.actionOnClicked.emit();
+
+  assert.deepEqual(harness.calls.tabsCreate, [
+    { url: "chrome-extension://test/analysis.html" },
+  ]);
+  assert.deepEqual(harness.calls.tabsUpdate, []);
+});
+
+test("forgets a registered analysis page when its tab closes", async () => {
+  const harness = createChromeHarness({
+    analysisTabs: [{ id: 9, windowId: 3 }],
+    queryCanSeeAnalysisTabs: false,
+    windows: [{ id: 3, state: "normal" }],
+  });
+  registerChromeEvents(harness);
+
+  await harness.events.runtimeOnMessage.emit(
+    { type: "WEBTRACE_ANALYSIS_READY" },
+    {
+      url: "chrome-extension://test/analysis.html",
+      tab: { id: 9, windowId: 3 },
+    },
+  );
+  await harness.events.tabsOnRemoved.emit(9, {
+    windowId: 3,
+    isWindowClosing: false,
+  });
+  await harness.events.actionOnClicked.emit();
+
+  assert.deepEqual(harness.calls.tabsCreate, [
+    { url: "chrome-extension://test/analysis.html" },
+  ]);
+  assert.deepEqual(harness.calls.tabsUpdate, []);
 });
 
 test("the content script reports silently, uses one 4-second timer, and resumes bfcache pages", async () => {

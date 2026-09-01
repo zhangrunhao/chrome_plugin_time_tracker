@@ -2,6 +2,7 @@ import {
   createErrorResponse,
   createSuccessResponse,
   WEBTRACE_ADD_SITE,
+  WEBTRACE_ANALYSIS_READY,
   WEBTRACE_DELETE_SITE_HISTORY,
   WEBTRACE_PAGE_VISIBILITY,
   WEBTRACE_SET_SITE_ENABLED,
@@ -20,16 +21,63 @@ function ignoreRejection(promise) {
   return promise;
 }
 
+const ANALYSIS_TAB_STORAGE_KEY = "webtraceAnalysisTabV1";
 const analysisPageTails = new WeakMap();
+
+function analysisTabRecord(tab) {
+  if (!Number.isInteger(tab?.id) || !Number.isInteger(tab?.windowId)) {
+    return null;
+  }
+  return { tabId: tab.id, windowId: tab.windowId };
+}
+
+async function saveAnalysisTab(chrome, tab) {
+  const record = analysisTabRecord(tab);
+  if (record === null) {
+    return;
+  }
+  await chrome.storage.session.set({ [ANALYSIS_TAB_STORAGE_KEY]: record });
+}
+
+async function loadAnalysisTab(chrome) {
+  const stored = await chrome.storage.session.get(ANALYSIS_TAB_STORAGE_KEY);
+  const record = stored[ANALYSIS_TAB_STORAGE_KEY];
+  if (!Number.isInteger(record?.tabId) || !Number.isInteger(record?.windowId)) {
+    return null;
+  }
+
+  try {
+    const tab = await chrome.tabs.get(record.tabId);
+    return analysisTabRecord(tab) === null
+      ? null
+      : { ...tab, windowId: tab.windowId ?? record.windowId };
+  } catch {
+    await chrome.storage.session.remove(ANALYSIS_TAB_STORAGE_KEY);
+    return null;
+  }
+}
+
+async function clearAnalysisTab(chrome, tabId) {
+  const stored = await chrome.storage.session.get(ANALYSIS_TAB_STORAGE_KEY);
+  if (stored[ANALYSIS_TAB_STORAGE_KEY]?.tabId === tabId) {
+    await chrome.storage.session.remove(ANALYSIS_TAB_STORAGE_KEY);
+  }
+}
 
 async function runAnalysisPageOpen(chrome) {
   const url = chrome.runtime.getURL("analysis.html");
-  const [existing] = await chrome.tabs.query({ url });
+  let existing = await loadAnalysisTab(chrome);
+  if (existing === null) {
+    [existing] = await chrome.tabs.query({ url });
+  }
 
   if (existing === undefined) {
-    await chrome.tabs.create({ url });
+    const created = await chrome.tabs.create({ url });
+    await saveAnalysisTab(chrome, created);
     return;
   }
+
+  await saveAnalysisTab(chrome, existing);
 
   const window = await chrome.windows.get(existing.windowId);
   if (window?.state === "minimized") {
@@ -39,11 +87,11 @@ async function runAnalysisPageOpen(chrome) {
   await chrome.windows.update(existing.windowId, { focused: true });
 }
 
-export function openOrFocusAnalysisPage(chrome) {
+function enqueueAnalysisPageOperation(chrome, callback) {
   const previous = analysisPageTails.get(chrome) ?? Promise.resolve();
   const operation = previous
     .catch(() => {})
-    .then(() => runAnalysisPageOpen(chrome));
+    .then(callback);
   analysisPageTails.set(chrome, operation);
   operation.then(
     () => {
@@ -58,6 +106,18 @@ export function openOrFocusAnalysisPage(chrome) {
     },
   );
   return operation;
+}
+
+export function openOrFocusAnalysisPage(chrome) {
+  return enqueueAnalysisPageOperation(chrome, () => runAnalysisPageOpen(chrome));
+}
+
+function registerAnalysisPage(chrome, tab) {
+  return enqueueAnalysisPageOperation(chrome, () => saveAnalysisTab(chrome, tab));
+}
+
+function forgetAnalysisPage(chrome, tabId) {
+  return enqueueAnalysisPageOperation(chrome, () => clearAnalysisTab(chrome, tabId));
 }
 
 function stackWithoutMessage(error) {
@@ -114,6 +174,12 @@ export function registerChromeEvents({
   const enqueue = event => reserveLifecycle(() => tracker.dispatch(event));
 
   chrome.webNavigation.onCommitted.addListener(details => {
+    if (
+      details.frameId === 0 &&
+      details.url !== chrome.runtime.getURL("analysis.html")
+    ) {
+      ignoreRejection(forgetAnalysisPage(chrome, details.tabId));
+    }
     if (details.frameId !== 0 || !isHttpUrl(details.url)) {
       return undefined;
     }
@@ -142,11 +208,14 @@ export function registerChromeEvents({
     at: clock.now(),
   }));
 
-  chrome.tabs.onRemoved.addListener(tabId => enqueue({
-    type: "TAB_REMOVED",
-    tabId,
-    at: clock.now(),
-  }));
+  chrome.tabs.onRemoved.addListener(tabId => {
+    ignoreRejection(forgetAnalysisPage(chrome, tabId));
+    return enqueue({
+      type: "TAB_REMOVED",
+      tabId,
+      at: clock.now(),
+    });
+  });
 
   chrome.tabs.onActivated.addListener(activeInfo => enqueue({
     type: "TAB_ACTIVATED",
@@ -183,6 +252,17 @@ export function registerChromeEvents({
   }));
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    const analysisUrl = chrome.runtime.getURL("analysis.html");
+    if (
+      message?.type === WEBTRACE_ANALYSIS_READY &&
+      sender?.url === analysisUrl &&
+      Number.isInteger(sender?.tab?.id) &&
+      Number.isInteger(sender?.tab?.windowId)
+    ) {
+      ignoreRejection(registerAnalysisPage(chrome, sender.tab));
+      return false;
+    }
+
     if (
       message?.type === WEBTRACE_PAGE_VISIBILITY &&
       Number.isInteger(sender?.tab?.id)
