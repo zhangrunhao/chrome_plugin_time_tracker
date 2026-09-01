@@ -11,7 +11,12 @@
 
 ## 当前 Change
 
-- [`2026-08-31-webtrace-v1-spec.md`](changes/2026-08-31-webtrace-v1-spec.md)：已确认的 WebTrace V1 网站使用统计规格，等待实施计划与开发。
+当前没有进行中的 Change。
+
+## 最近完成
+
+- [`2026-08-31-webtrace-v1-spec.md`](archive/2026-08/2026-08-31-webtrace-v1-spec.md)：已完成的 WebTrace V1 网站使用统计规格。
+- [`2026-08-31-webtrace-v1-plan.md`](archive/2026-08/2026-08-31-webtrace-v1-plan.md)：已执行并归档的 WebTrace V1 实施与验证计划。
 
 ## 命名规则
 
