@@ -1,16 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "TimeTracker",
+  "name": "WebTrace",
   "version": "1.0.0",
-  "description": "在指定网站右上角显示今日已使用时长（本地统计，无需登录）",
-  "permissions": ["storage"],
-  "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "background.js" },
+  "description": "WebTrace 在本地记录已配置网站的打开次数与有效观看时长",
+  "minimum_chrome_version": "102",
+  "permissions": ["idle", "storage", "unlimitedStorage", "webNavigation"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["content.js"],
-      "css": ["content.css"],
       "run_at": "document_idle"
     }
   ],
@@ -20,6 +20,6 @@
     "128": "images/icon_128.png"
   },
   "action": {
-    "default_title": "TimeTracker"
+    "default_title": "WebTrace"
   }
 }

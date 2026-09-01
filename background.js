@@ -1,44 +1,134 @@
-// 简单工具：本地日期键（按用户时区）
-function dateKey(ts = Date.now()) {
-  const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+import { registerChromeEvents } from "./src/background/chrome-events.js";
+import { createTracker } from "./src/background/tracker.js";
+import { createSessionRepository } from "./src/storage/session-repository.js";
+import { createSiteRepository } from "./src/storage/site-repository.js";
+import { createTrackingRepository } from "./src/storage/tracking-repository.js";
+import { openWebTraceDb } from "./src/storage/webtrace-db.js";
+
+const chromeApi = globalThis.chrome;
+const trustedContexts = { accessLevel: "TRUSTED_CONTEXTS" };
+
+function reportError({ code }) {
+  console.error(code);
 }
 
-// 读/写 storage 的 Promise 包装
-const store = {
-  async get(keys) {
-    return await chrome.storage.local.get(keys);
-  },
-  async set(obj) {
-    return await chrome.storage.local.set(obj);
-  },
-};
+function restrictStorageAccess() {
+  return Promise.all([
+    chromeApi.storage.local.setAccessLevel(trustedContexts),
+    chromeApi.storage.session.setAccessLevel(trustedContexts),
+  ]).catch(error => {
+    reportError({ code: "STORAGE_ACCESS_LEVEL_FAILED" });
+    throw error;
+  });
+}
 
-// 处理 content 的心跳/汇报
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  (async () => {
-    if (msg?.type === "TIMETRACKER_TICK") {
-      const { domain, deltaSec } = msg; // deltaSec 本次新增秒数
-      if (!domain || !deltaSec) return sendResponse({ ok: false });
+export function createChromeBrowserSnapshot(chrome = chromeApi) {
+  return {
+    async capture() {
+      const [windows, idleState] = await Promise.all([
+        chrome.windows.getAll({ populate: true, windowTypes: ["normal"] }),
+        new Promise((resolve, reject) => {
+          chrome.idle.queryState(60, state => {
+            const error = chrome.runtime.lastError;
+            if (error !== null && error !== undefined) {
+              reject(new Error(error.message));
+              return;
+            }
+            resolve(state);
+          });
+        }),
+      ]);
+      const focusedWindow = windows.find(window => window.focused === true);
+      return {
+        windows,
+        tabs: windows.flatMap(window => window.tabs ?? []),
+        focusedWindowId: focusedWindow?.id ?? null,
+        idleState,
+      };
+    },
+  };
+}
 
-      const today = dateKey();
-      const data = (await store.get(["stats"]))?.stats || {};
-      data[today] ??= {};
-      data[today][domain] = (data[today][domain] || 0) + deltaSec;
+function gatedSiteRepository(accessReady, repository) {
+  return {
+    async list(...args) {
+      await accessReady;
+      return repository.list(...args);
+    },
+    async replace(...args) {
+      await accessReady;
+      return repository.replace(...args);
+    },
+  };
+}
 
-      await store.set({ stats: data });
+function gatedSessionRepository(accessReady, repository) {
+  return {
+    async load(...args) {
+      await accessReady;
+      return repository.load(...args);
+    },
+    async save(...args) {
+      await accessReady;
+      return repository.save(...args);
+    },
+    async clear(...args) {
+      await accessReady;
+      return repository.clear(...args);
+    },
+  };
+}
 
-      sendResponse({
-        ok: true,
-        today,
-        totalSecForDomainToday: data[today][domain],
-      });
-    }
-  })();
+function deferredTrackingRepository(repositoryReady) {
+  return {
+    async getVisit(...args) {
+      return (await repositoryReady).getVisit(...args);
+    },
+    async listOpenVisits(...args) {
+      return (await repositoryReady).listOpenVisits(...args);
+    },
+    async getCheckpoint(...args) {
+      return (await repositoryReady).getCheckpoint(...args);
+    },
+    async queryVisitsForReport(...args) {
+      return (await repositoryReady).queryVisitsForReport(...args);
+    },
+    async commit(...args) {
+      return (await repositoryReady).commit(...args);
+    },
+  };
+}
 
-  // 异步响应
-  return true;
+const storageAccessReady = restrictStorageAccess();
+const siteRepository = gatedSiteRepository(
+  storageAccessReady,
+  createSiteRepository(chromeApi.storage.local),
+);
+const sessionRepository = gatedSessionRepository(
+  storageAccessReady,
+  createSessionRepository(chromeApi.storage.session),
+);
+const trackingRepositoryReady = storageAccessReady
+  .then(() => openWebTraceDb(globalThis.indexedDB))
+  .then(createTrackingRepository);
+
+const tracker = createTracker({
+  trackingRepository: deferredTrackingRepository(trackingRepositoryReady),
+  siteRepository,
+  sessionRepository,
+  browserSnapshot: createChromeBrowserSnapshot(chromeApi),
+  clock: { now: () => Date.now() },
+  idFactory: () => crypto.randomUUID(),
+  delay: ms => new Promise(resolve => setTimeout(resolve, ms)),
+  reportError,
+});
+
+export const backgroundReady = tracker.ready;
+backgroundReady.catch(() => {});
+
+registerChromeEvents({
+  chrome: chromeApi,
+  tracker,
+  siteService: undefined,
+  clock: { now: () => Date.now() },
 });
