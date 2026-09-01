@@ -195,6 +195,14 @@ test("a blank child inherits only while its opener association still exists", ()
     type: "NAVIGATION_COMMITTED",
     tabId: 2,
     windowId: 1,
+    url: "about:blank",
+    documentId: "doc-blank",
+    at: 2_500,
+  }, context);
+  result = reduceRuntimeEvent(result.state, {
+    type: "NAVIGATION_COMMITTED",
+    tabId: 2,
+    windowId: 1,
     url: "https://zhuanlan.zhihu.com/p/1",
     documentId: "doc-2",
     at: 3_000,
@@ -227,6 +235,40 @@ test("an unused blank child cannot keep a closed opener visit alive", () => {
     at: 4_000,
   }, context);
   assert.equal(effectsOf(result, "CREATE_VISIT").length, 1);
+  assert.equal(result.state.tabs["2"].visitId, "v2");
+});
+
+test("a blank child consumes opener inheritance on its first committed navigation", () => {
+  const context = makeRuntimeContext({ sites, ids: ["v2"] });
+  let result = reduceRuntimeEvent(stateWithTrackedTab(), {
+    type: "TAB_CREATED",
+    tabId: 2,
+    windowId: 1,
+    openerTabId: 1,
+    candidateUrl: "about:blank",
+    at: 2_000,
+  }, context);
+  result = reduceRuntimeEvent(result.state, {
+    type: "NAVIGATION_COMMITTED",
+    tabId: 2,
+    windowId: 1,
+    url: "https://example.org/",
+    documentId: "doc-outside",
+    at: 3_000,
+  }, context);
+  assert.equal(effectsOf(result, "CREATE_VISIT").length, 0);
+
+  result = reduceRuntimeEvent(result.state, {
+    type: "NAVIGATION_COMMITTED",
+    tabId: 2,
+    windowId: 1,
+    url: "https://www.zhihu.com/independent",
+    documentId: "doc-target",
+    at: 4_000,
+  }, context);
+
+  assert.equal(effectsOf(result, "CREATE_VISIT").length, 1);
+  assert.equal(effectsOf(result, "CREATE_VISIT")[0].visit.id, "v2");
   assert.equal(result.state.tabs["2"].visitId, "v2");
 });
 
@@ -487,6 +529,22 @@ test("confirms an unchanged active visit without starting another interval", () 
 
   assert.deepEqual(result.effects, [{ type: "CONFIRM_INTERVAL", visitId: "v1", at: 2_000 }]);
   assert.equal(effectsOf(result, "START_INTERVAL").length, 0);
+});
+
+test("does not confirm the active visit from an unrelated background tab", () => {
+  const state = stateWithTrackedTab();
+  state.tabs["2"] = tabRuntime({ tabId: 2, visible: false });
+  const result = reduceRuntimeEvent(state, {
+    type: "PAGE_VISIBILITY",
+    tabId: 2,
+    documentId: "doc-2",
+    visible: true,
+    at: 2_000,
+  }, makeRuntimeContext({ sites }));
+
+  assert.equal(result.state.tabs["2"].visible, true);
+  assert.equal(result.state.activeVisitId, "v1");
+  assert.deepEqual(result.effects, []);
 });
 
 test("clamps event time and clones only state branches that change", () => {

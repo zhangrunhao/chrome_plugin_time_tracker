@@ -148,6 +148,14 @@ function own(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
+function isHttpUrl(url) {
+  try {
+    return ["http:", "https:"].includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+}
+
 export function reduceRuntimeEvent(state, event, { sites, idFactory }) {
   if (event.type === "PAGE_VISIBILITY") {
     const tab = state.tabs[String(event.tabId)];
@@ -353,7 +361,7 @@ export function reduceRuntimeEvent(state, event, { sites, idFactory }) {
       setTab({
         tabId: event.tabId,
         windowId: event.windowId,
-        openerTabId: previous.openerTabId,
+        openerTabId: isHttpUrl(event.url) ? null : previous.openerTabId,
         documentId: event.documentId ?? null,
         currentSiteId: targetSiteId,
         visitId,
@@ -424,6 +432,8 @@ export function reduceRuntimeEvent(state, event, { sites, idFactory }) {
   if (
     event.type === "PAGE_VISIBILITY" &&
     event.visible === true &&
+    focusedWindowId !== null &&
+    activeTabByWindow[String(focusedWindowId)] === event.tabId &&
     previousActiveVisitId !== null &&
     previousActiveVisitId === nextActiveVisitId
   ) {
