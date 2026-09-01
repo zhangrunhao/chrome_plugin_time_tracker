@@ -2,7 +2,7 @@
 
 > 最后核验：2026-09-01（Asia/Shanghai）
 
-当前仓库已实现 WebTrace V1：用户可以配置多个网站，在本机记录有效打开和有效观看时长，并在扩展分析页查看最近 7 天趋势与逐次访问明细。自动验证为 122/122；真实 Chrome 与经用户批准的自动化替代共同覆盖验收范围，但不应表述为 13 个场景全部手工通过。
+当前仓库已实现 WebTrace V1：用户可以配置多个网站，在本机记录有效打开和有效观看时长，并在扩展分析页查看最近 7 天趋势与逐次访问明细。自动验证为 123/123；真实 Chrome 与经用户批准的自动化替代共同覆盖验收范围，但不应表述为 13 个场景全部手工通过。
 
 ## 内容边界
 
@@ -37,7 +37,7 @@
 
 - 网站配置保存在 `chrome.storage.local` 的 `webtraceSitesV1`；标签页映射和轻量 checkpoint 镜像保存在 `chrome.storage.session`。
 - 访问记录保存在 IndexedDB `webtrace` v1 的 `visits` store；索引为 `siteId + openedAt` 和 `siteId + lastActivityAt`。权威 runtime checkpoint 与访问记录在同一事务提交。
-- `Visit.activeIntervals` 是打开次数、时长、趋势和逐次明细的唯一事实来源，不写日汇总缓存。
+- `Visit` 是打开次数、时长、趋势和逐次明细的唯一事实来源：`openedAt` 决定次数和明细归属，`activeIntervals` 决定时长；不写日汇总缓存。
 - IndexedDB 权威提交最多尝试 3 次，重试间隔为 50 ms 和 150 ms；失败时不替换内存中的已提交状态。
 - service worker 重启时复用同会话 checkpoint，不新增打开；浏览器新会话把旧访问截断在最后确认时间，并为实际恢复的目标页面创建新访问，不累计离线时间。
 - 旧版 `chrome.storage.local.stats` 不读取、不写入，也不自动迁移或删除。
@@ -64,6 +64,7 @@
 - 异常退出最多可能少计约一个 4 秒确认周期；恢复逻辑以最后确认时间截断，目标是只少计而不累计离线时间。
 - 记录默认长期保留并依赖用户主动删除；没有自动过期策略。
 - session 标签注册防止正常工具栏操作产生重复分析页，但不会主动关闭用户手工创建的既有重复分析页。
+- 已收到的顶层非 HTTP/HTTPS 导航会被视为离开统计网站；Chrome 没有向当前权限组合暴露的受限内部页导航仍属于浏览器平台边界。
 - 本次记录的 Chrome `152.0.7977.65` 来自本机应用 bundle，没有从 `chrome://version` 手工读取。
 - 场景 4、9 是真实 Chrome 部分证据加自动化补充后 `ACCEPTED`；场景 11、12 仅使用经用户批准的自动化替代，仍缺少对应手工破坏性恢复操作。
 
@@ -86,7 +87,7 @@ rg -n "timetracker-badge|TIMETRACKER_TICK|<all_urls>|default_popup" manifest.jso
 rg -n "fetch\(|XMLHttpRequest|WebSocket|EventSource" . --glob '*.js' --glob '!node_modules/**' --glob '!vendor/**'
 ```
 
-- `npm test`：122/122 通过。
+- `npm test`：123/123 通过。
 - vendored `tldts` 可重复生成且无差异；全部 JavaScript、入口和 manifest JSON 检查通过。
 - 最后两项扫描无匹配；`rg` 因无匹配返回 1，结果符合预期。
 
