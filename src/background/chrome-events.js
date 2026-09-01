@@ -13,7 +13,9 @@ function ignoreRejection(promise) {
   return promise;
 }
 
-export async function openOrFocusAnalysisPage(chrome) {
+const analysisPageTails = new WeakMap();
+
+async function runAnalysisPageOpen(chrome) {
   const url = chrome.runtime.getURL("analysis.html");
   const [existing] = await chrome.tabs.query({ url });
 
@@ -30,18 +32,46 @@ export async function openOrFocusAnalysisPage(chrome) {
   await chrome.windows.update(existing.windowId, { focused: true });
 }
 
-export function registerChromeEvents({ chrome, tracker, siteService: _siteService, clock }) {
-  const enqueue = event => ignoreRejection(
-    Promise.resolve(tracker.ready).then(() => tracker.dispatch(event)),
+export function openOrFocusAnalysisPage(chrome) {
+  const previous = analysisPageTails.get(chrome) ?? Promise.resolve();
+  const operation = previous
+    .catch(() => {})
+    .then(() => runAnalysisPageOpen(chrome));
+  analysisPageTails.set(chrome, operation);
+  operation.then(
+    () => {
+      if (analysisPageTails.get(chrome) === operation) {
+        analysisPageTails.delete(chrome);
+      }
+    },
+    () => {
+      if (analysisPageTails.get(chrome) === operation) {
+        analysisPageTails.delete(chrome);
+      }
+    },
   );
+  return operation;
+}
+
+export function registerChromeEvents({ chrome, tracker, siteService: _siteService, clock }) {
+  let lifecycleTail = Promise.resolve();
+  const reserveLifecycle = operation => {
+    const result = lifecycleTail
+      .then(() => tracker.ready)
+      .then(operation);
+    lifecycleTail = result.catch(() => {});
+    return ignoreRejection(result);
+  };
+  const enqueue = event => reserveLifecycle(() => tracker.dispatch(event));
 
   chrome.webNavigation.onCommitted.addListener(details => {
     if (details.frameId !== 0 || !isHttpUrl(details.url)) {
       return undefined;
     }
     const at = clock.now();
-    return ignoreRejection(
-      chrome.tabs.get(details.tabId).then(tab => enqueue({
+    return reserveLifecycle(async () => {
+      const tab = await chrome.tabs.get(details.tabId);
+      return tracker.dispatch({
         type: "NAVIGATION_COMMITTED",
         tabId: details.tabId,
         windowId: tab.windowId,
@@ -50,8 +80,8 @@ export function registerChromeEvents({ chrome, tracker, siteService: _siteServic
         transitionType: details.transitionType,
         transitionQualifiers: details.transitionQualifiers,
         at,
-      })),
-    );
+      });
+    });
   });
 
   chrome.tabs.onCreated.addListener(tab => enqueue({

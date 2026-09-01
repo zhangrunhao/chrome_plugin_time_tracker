@@ -41,6 +41,8 @@ function createChromeHarness({
   windows = [],
   trackerReady = Promise.resolve(),
   storageAccessError = null,
+  tabsGetReady = Promise.resolve(),
+  tabsCreateReady = Promise.resolve(),
 } = {}) {
   const events = {
     webNavigationOnCommitted: createFakeEvent(),
@@ -67,6 +69,7 @@ function createChromeHarness({
     storageOperations: [],
   };
   const stored = { local: {}, session: {} };
+  const analysisTabRecords = analysisTabs.map(tab => structuredClone(tab));
   const windowRecords = new Map(windows.map(window => [window.id, structuredClone(window)]));
   let currentNow = now;
 
@@ -105,15 +108,19 @@ function createChromeHarness({
       onActivated: events.tabsOnActivated,
       async get(tabId) {
         calls.tabsGet.push(tabId);
+        await tabsGetReady;
         return { id: tabId, windowId: 2 };
       },
       async query(query) {
         calls.tabsQuery.push(structuredClone(query));
-        return structuredClone(analysisTabs);
+        return structuredClone(analysisTabRecords);
       },
       async create(options) {
         calls.tabsCreate.push(structuredClone(options));
-        return { id: 100, windowId: 1, ...options };
+        await tabsCreateReady;
+        const tab = { id: 99 + calls.tabsCreate.length, windowId: 1, ...options };
+        analysisTabRecords.push(tab);
+        return structuredClone(tab);
       },
       async update(tabId, update) {
         calls.tabsUpdate.push({ tabId, update: structuredClone(update) });
@@ -319,6 +326,35 @@ test("queues browser events behind tracker readiness", async () => {
   ]);
 });
 
+test("preserves navigation before a later tab removal while tab lookup is pending", async () => {
+  const tabsGet = deferred();
+  const harness = createChromeHarness({ tabsGetReady: tabsGet.promise });
+  registerChromeEvents(harness);
+
+  const navigation = harness.events.webNavigationOnCommitted.emit({
+    tabId: 1,
+    frameId: 0,
+    url: "https://www.zhihu.com/question/1",
+    documentId: "doc-1",
+  });
+  await Promise.resolve();
+  const removal = harness.events.tabsOnRemoved.emit(1, {
+    windowId: 2,
+    isWindowClosing: false,
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(harness.tracker.dispatchCalls, []);
+
+  tabsGet.resolve();
+  await Promise.all([navigation, removal]);
+  assert.deepEqual(
+    harness.tracker.dispatchCalls.map(event => event.type),
+    ["NAVIGATION_COMMITTED", "TAB_REMOVED"],
+  );
+});
+
 test("opens the analysis page once and focuses an existing minimized window", async () => {
   const emptyHarness = createChromeHarness({ analysisTabs: [] });
   await openOrFocusAnalysisPage(emptyHarness.chrome);
@@ -339,6 +375,33 @@ test("opens the analysis page once and focuses an existing minimized window", as
     { windowId: 3, update: { focused: true } },
   ]);
   assert.deepEqual(existingHarness.calls.tabsCreate, []);
+});
+
+test("serializes concurrent analysis-page opens and rechecks after creation", async () => {
+  const createReady = deferred();
+  const harness = createChromeHarness({
+    analysisTabs: [],
+    tabsCreateReady: createReady.promise,
+  });
+
+  const first = openOrFocusAnalysisPage(harness.chrome);
+  const second = openOrFocusAnalysisPage(harness.chrome);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(harness.calls.tabsCreate.length, 1);
+
+  createReady.resolve();
+  await Promise.all([first, second]);
+  await openOrFocusAnalysisPage(harness.chrome);
+
+  assert.equal(harness.calls.tabsCreate.length, 1);
+  assert.equal(harness.calls.tabsQuery.length, 3);
+  assert.deepEqual(harness.calls.tabsUpdate, [
+    { tabId: 100, update: { active: true } },
+    { tabId: 100, update: { active: true } },
+  ]);
 });
 
 test("the content script reports silently, uses one 4-second timer, and resumes bfcache pages", async () => {
