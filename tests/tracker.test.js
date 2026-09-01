@@ -4,6 +4,7 @@ import {
   createTrackerHarness,
   openVisit,
   runtimeState,
+  siteConfigurationSignatureForTest,
   trackerSites,
 } from "./helpers/tracker-fakes.js";
 
@@ -186,7 +187,8 @@ test("restores a matching worker session without creating another visit", async 
 
   assert.equal(harness.tracker.getStateForTest().revision, 2);
   assert.deepEqual(harness.repository.generatedIds, []);
-  assert.equal(harness.repository.commitCalls, 0);
+  assert.equal(harness.repository.commitCalls, 1);
+  assert.deepEqual(harness.repository.successfulCommits[0].putVisits, []);
 
   await harness.tracker.dispatch({
     type: "PAGE_VISIBILITY",
@@ -227,6 +229,53 @@ test("does not let a mismatched startup snapshot suppress its queued navigation"
   assert.equal(visits.old.endedAt, 1_500);
   assert.equal(visits["new-visit"].openedAt, 2_000);
   assert.equal(harness.tracker.getStateForTest().tabs["1"].visitId, "new-visit");
+});
+
+test("clamps queued events to the worker reconciliation timestamp", async () => {
+  const checkpoint = runtimeState({
+    tabs: { "1": trackedTab({ siteId: "bilibili", visitId: "old", visible: true }) },
+    activeTabByWindow: { "1": 1 },
+    windowStateById: { "1": "normal" },
+    focusedWindowId: 1,
+    activeVisitId: "old",
+    lastEventAt: 900,
+  });
+  const harness = createTrackerHarness({
+    checkpoint,
+    sessionState: checkpoint,
+    openVisits: [openVisit({
+      id: "old",
+      siteId: "bilibili",
+      activeIntervals: [{ startedAt: 500, endedAt: null }],
+      lastConfirmedAt: 1_500,
+      lastActivityAt: 1_500,
+    })],
+    browserSnapshot: normalBrowserSnapshot([
+      browserTab({ url: "https://www.zhihu.com/", visible: false }),
+    ]),
+    now: 1_500,
+    ids: ["new-visit"],
+  });
+
+  const navigation = harness.tracker.dispatch({ ...navigationEvent, at: 1_000 });
+  const visible = harness.tracker.dispatch({
+    type: "PAGE_VISIBILITY",
+    tabId: 1,
+    documentId: "doc-1",
+    visible: true,
+    at: 1_100,
+  });
+  await Promise.all([navigation, visible]);
+
+  const visits = Object.fromEntries(
+    harness.repository.snapshotVisits().map(visit => [visit.id, visit]),
+  );
+  assert.equal(visits.old.endedAt, 1_500);
+  assert.equal(visits["new-visit"].openedAt, 1_500);
+  assert.deepEqual(visits["new-visit"].activeIntervals, [
+    { startedAt: 1_500, endedAt: null },
+  ]);
+  assert.equal(harness.tracker.getStateForTest().lastEventAt, 1_500);
 });
 
 test("chooses a newer same-session IDB checkpoint and repairs the mirror", async () => {
@@ -296,6 +345,85 @@ test("treats a missing session mirror as a browser restart and truncates old vis
     harness.repository.snapshotVisits().find(visit => visit.id === "background").activeIntervals,
     [{ startedAt: 22_000, endedAt: null }],
   );
+});
+
+test("rejects browser-restart readiness when its required mirror save fails", async () => {
+  const harness = createTrackerHarness({
+    sessionState: null,
+    checkpoint: null,
+    sessionFailures: 1,
+    browserSnapshot: normalBrowserSnapshot([
+      browserTab({ active: true, visible: false }),
+    ]),
+    now: 20_000,
+    ids: ["new-session", "restored"],
+  });
+
+  await assert.rejects(harness.tracker.ready, /session write failed/);
+  assert.equal(harness.repository.snapshotVisits().length, 1);
+  assert.equal(harness.repository.snapshotCheckpoint().bootstrapPending, true);
+  assert.equal(harness.session.snapshot(), null);
+});
+
+test("resumes an interrupted browser bootstrap without duplicating its restored opening", async () => {
+  const first = createTrackerHarness({
+    sessionState: null,
+    checkpoint: null,
+    sessionFailures: 1,
+    browserSnapshot: normalBrowserSnapshot([
+      browserTab({ active: true, visible: false }),
+    ]),
+    now: 20_000,
+    ids: ["new-session", "restored"],
+  });
+  await first.tracker.ready.catch(() => {});
+
+  const second = createTrackerHarness({
+    sessionState: first.session.snapshot(),
+    checkpoint: first.repository.snapshotCheckpoint(),
+    openVisits: first.repository.snapshotVisits(),
+    browserSnapshot: normalBrowserSnapshot([
+      browserTab({ active: true, visible: false }),
+    ]),
+    now: 21_000,
+    ids: ["duplicate-session", "duplicate-visit"],
+  });
+
+  await second.tracker.ready;
+
+  assert.deepEqual(second.repository.generatedIds, []);
+  assert.deepEqual(
+    second.repository.snapshotVisits().map(visit => visit.id),
+    ["restored"],
+  );
+  assert.equal(second.tracker.getStateForTest().tabs["1"].visitId, "restored");
+  assert.equal(Object.hasOwn(second.repository.snapshotCheckpoint(), "bootstrapPending"), false);
+  assert.deepEqual(second.session.snapshot(), second.repository.snapshotCheckpoint());
+  assert.deepEqual(second.tracker.getStateForTest(), second.repository.snapshotCheckpoint());
+});
+
+test("keeps readiness strict when session exists but IDB bootstrap is still pending", async () => {
+  const finalState = runtimeState({
+    sessionId: "new-session",
+    tabs: { "1": trackedTab({ visitId: "restored", visible: false }) },
+    activeTabByWindow: { "1": 1 },
+    windowStateById: { "1": "normal" },
+    focusedWindowId: 1,
+    lastEventAt: 20_000,
+  });
+  const harness = createTrackerHarness({
+    checkpoint: { ...finalState, bootstrapPending: true },
+    sessionState: finalState,
+    sessionFailures: 1,
+    openVisits: [openVisit({ id: "restored", openedAt: 20_000 })],
+    browserSnapshot: normalBrowserSnapshot([
+      browserTab({ active: true, visible: false }),
+    ]),
+    now: 21_000,
+  });
+
+  await assert.rejects(harness.tracker.ready, /session write failed/);
+  assert.equal(harness.repository.snapshotCheckpoint().bootstrapPending, true);
 });
 
 test("ignores tabs from non-normal browser windows during restart recovery", async () => {
@@ -389,6 +517,69 @@ test("updates site policy from a fresh sanitized snapshot without backfill", asy
   assert.equal(harness.tracker.getStateForTest().tabs["1"].currentSiteId, "zhihu");
   assert.equal(harness.tracker.getStateForTest().tabs["1"].visitId, null);
   assert.equal(JSON.stringify(harness.repository.snapshotCheckpoint()).includes("https://"), false);
+});
+
+test("preserves no-backfill policy across termination after a failed site sync", async () => {
+  const oldSites = trackerSites.filter(site => site.id === "bilibili");
+  const oldState = runtimeState({
+    tabs: { "1": trackedTab({ siteId: null, visitId: null, visible: false }) },
+    activeTabByWindow: { "1": 1 },
+    windowStateById: { "1": "normal" },
+    focusedWindowId: 1,
+    lastEventAt: 1_000,
+    siteConfigSignature: siteConfigurationSignatureForTest(oldSites),
+  });
+  const first = createTrackerHarness({
+    sites: oldSites,
+    checkpoint: oldState,
+    sessionState: oldState,
+    browserSnapshot: normalBrowserSnapshot([
+      browserTab({ url: "https://www.zhihu.com/", visible: false }),
+    ]),
+  });
+  await first.tracker.ready;
+  first.repository.setCommitFailures(3);
+  await assert.rejects(
+    first.tracker.updateSites(trackerSites, { at: 2_000, allowBackfill: false }),
+    /write failed/,
+  );
+  await first.tracker.markSitesDirty(trackerSites);
+
+  const second = createTrackerHarness({
+    sites: trackerSites,
+    checkpoint: first.repository.snapshotCheckpoint(),
+    sessionState: first.session.snapshot(),
+    openVisits: first.repository.snapshotVisits(),
+    browserSnapshot: normalBrowserSnapshot([
+      browserTab({ url: "https://www.zhihu.com/", visible: false }),
+    ]),
+    now: 2_500,
+    ids: ["new-visit"],
+  });
+  await second.tracker.ready;
+
+  assert.equal(second.tracker.getStateForTest().tabs["1"].currentSiteId, "zhihu");
+  assert.equal(second.tracker.getStateForTest().tabs["1"].visitId, null);
+  await second.tracker.dispatch({ ...navigationEvent, at: 3_000 });
+  assert.deepEqual(second.repository.generatedIds, []);
+
+  await second.tracker.dispatch({
+    ...navigationEvent,
+    url: "https://example.org/",
+    documentId: "doc-outside",
+    at: 4_000,
+  });
+  await second.tracker.dispatch({
+    ...navigationEvent,
+    documentId: "doc-return",
+    at: 5_000,
+  });
+
+  assert.deepEqual(second.repository.generatedIds, ["new-visit"]);
+  assert.equal(second.repository.snapshotVisits()[0].openedAt, 5_000);
+  const serialized = JSON.stringify(second.repository.snapshotCheckpoint());
+  assert.equal(serialized.includes("zhihu.com"), false);
+  assert.equal(serialized.includes("https://"), false);
 });
 
 test("deletes one site's history through the same serialized transaction", async () => {

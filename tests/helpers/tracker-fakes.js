@@ -5,6 +5,18 @@ const defaultSites = [
   { id: "bilibili", name: "Bilibili", domain: "bilibili.com", enabled: true, createdAt: 1 },
 ];
 
+export function siteConfigurationSignatureForTest(sites) {
+  const canonical = [...sites]
+    .map(site => [site.id, site.domain, site.enabled === true])
+    .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+  let hash = 0xcbf29ce484222325n;
+  for (const character of JSON.stringify(canonical)) {
+    hash ^= BigInt(character.codePointAt(0));
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return `v1:${hash.toString(16).padStart(16, "0")}`;
+}
+
 function copy(value) {
   return value === undefined ? undefined : structuredClone(value);
 }
@@ -19,6 +31,7 @@ export function runtimeState({
   locked = false,
   activeVisitId = null,
   lastEventAt = 0,
+  siteConfigSignature = siteConfigurationSignatureForTest(defaultSites),
 } = {}) {
   return {
     version: 1,
@@ -31,6 +44,7 @@ export function runtimeState({
     locked,
     activeVisitId,
     lastEventAt,
+    siteConfigSignature,
   };
 }
 
@@ -257,7 +271,7 @@ export function createTrackerHarness({
   ids = ["generated-1", "generated-2", "generated-3", "generated-4"],
   snapshotDeferred = false,
 } = {}) {
-  const baseCheckpoint = checkpoint === undefined ? runtimeState() : checkpoint;
+  const baseCheckpoint = checkpoint === undefined ? runtimeState({ lastEventAt: now }) : checkpoint;
   const baseSession = sessionState === undefined ? baseCheckpoint : sessionState;
   const operationLog = [];
   const repository = createTrackingFake({

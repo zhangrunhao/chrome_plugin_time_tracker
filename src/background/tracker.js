@@ -23,6 +23,20 @@ function sameValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+// Internal opaque marker: it records tracking-relevant site policy without
+// persisting configured domains or other URL-derived data in runtime state.
+function siteConfigurationSignature(sites) {
+  const canonical = [...sites]
+    .map(site => [site.id, site.domain, site.enabled === true])
+    .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+  let hash = 0xcbf29ce484222325n;
+  for (const character of JSON.stringify(canonical)) {
+    hash ^= BigInt(character.codePointAt(0));
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return `v1:${hash.toString(16).padStart(16, "0")}`;
+}
+
 function tabValues(snapshot) {
   if (Array.isArray(snapshot.tabs)) {
     return snapshot.tabs;
@@ -122,7 +136,8 @@ function transitionEffects(previousState, nextState, sites, at) {
   return effects;
 }
 
-function reconcileWorkerState(baseState, snapshot, sites, at) {
+function reconcileWorkerState(baseState, snapshot, sites, at, currentSiteConfigSignature) {
+  const siteConfigChanged = baseState.siteConfigSignature !== currentSiteConfigSignature;
   const tabs = {};
   for (const current of snapshot.tabs) {
     const previous = baseState.tabs[String(current.tabId)];
@@ -132,7 +147,7 @@ function reconcileWorkerState(baseState, snapshot, sites, at) {
         windowId: current.windowId,
         openerTabId: current.openerTabId,
         documentId: current.documentId ?? null,
-        currentSiteId: null,
+        currentSiteId: siteConfigChanged ? current.currentSiteId : null,
         visitId: null,
         pendingInheritance: false,
         visible: current.visibilityKnown ? current.visible : false,
@@ -156,7 +171,7 @@ function reconcileWorkerState(baseState, snapshot, sites, at) {
     };
   }
 
-  const state = createRuntimeState({
+  const runtimeState = createRuntimeState({
     sessionId: baseState.sessionId,
     sites,
     snapshot: {
@@ -166,9 +181,13 @@ function reconcileWorkerState(baseState, snapshot, sites, at) {
       windowStateById: snapshot.windowStateById,
       focusedWindowId: snapshot.focusedWindowId,
       locked: snapshot.locked,
-      lastEventAt: baseState.lastEventAt,
+      lastEventAt: Math.max(baseState.lastEventAt, at),
     },
   });
+  const state = {
+    ...runtimeState,
+    siteConfigSignature: currentSiteConfigSignature,
+  };
   return {
     state,
     effects: transitionEffects(baseState, state, sites, at),
@@ -235,6 +254,17 @@ export function createTracker({
     } catch (error) {
       mirrorDirty = true;
       logError("SESSION_MIRROR_FAILED", error);
+    }
+  }
+
+  async function saveStartupMirror(nextState) {
+    try {
+      await sessionRepository.save(nextState);
+      mirrorDirty = false;
+    } catch (error) {
+      mirrorDirty = true;
+      logError("SESSION_MIRROR_FAILED", error);
+      throw error;
     }
   }
 
@@ -334,7 +364,13 @@ export function createTracker({
       sites: nextSites,
       idFactory,
     });
-    await commitReduction(reduction);
+    await commitReduction({
+      ...reduction,
+      state: {
+        ...reduction.state,
+        siteConfigSignature: siteConfigurationSignature(nextSites),
+      },
+    });
     sites = copy(nextSites);
   }
 
@@ -378,7 +414,7 @@ export function createTracker({
       };
     }
 
-    const checkpoint = createRuntimeState({
+    const runtimeState = createRuntimeState({
       sessionId,
       sites: configuredSites,
       snapshot: {
@@ -391,6 +427,10 @@ export function createTracker({
         lastEventAt: at,
       },
     });
+    const checkpoint = {
+      ...runtimeState,
+      siteConfigSignature: siteConfigurationSignature(configuredSites),
+    };
     if (checkpoint.activeVisitId !== null) {
       const activeVisit = visitsById.get(checkpoint.activeVisitId);
       const started = startInterval(activeVisit, at);
@@ -399,9 +439,40 @@ export function createTracker({
       putVisits[index] = started;
     }
 
-    await commitWithRetry({ putVisits, deleteSiteIds: [], checkpoint });
+    const pendingCheckpoint = { ...checkpoint, bootstrapPending: true };
+    await commitWithRetry({ putVisits, deleteSiteIds: [], checkpoint: pendingCheckpoint });
+    await saveStartupMirror(checkpoint);
+    await commitWithRetry({ putVisits: [], deleteSiteIds: [], checkpoint });
     state = checkpoint;
-    await saveMirror(state);
+  }
+
+  async function resumeBrowserBootstrap(configuredSites, pendingCheckpoint, snapshot) {
+    const { bootstrapPending: _bootstrapPending, ...baseState } = pendingCheckpoint;
+    const reconciled = reconcileWorkerState(
+      baseState,
+      snapshot,
+      configuredSites,
+      clock.now(),
+      siteConfigurationSignature(configuredSites),
+    );
+    const nextPendingCheckpoint = {
+      ...reconciled.state,
+      bootstrapPending: true,
+    };
+    if (
+      !sameValue(pendingCheckpoint, nextPendingCheckpoint) ||
+      reconciled.effects.length > 0
+    ) {
+      const writes = await applyEffects(reconciled.effects);
+      await commitWithRetry({ ...writes, checkpoint: nextPendingCheckpoint });
+    }
+    await saveStartupMirror(reconciled.state);
+    await commitWithRetry({
+      putVisits: [],
+      deleteSiteIds: [],
+      checkpoint: reconciled.state,
+    });
+    state = reconciled.state;
   }
 
   async function initializeWorkerRestart(configuredSites, mirror, checkpoint, snapshot) {
@@ -411,12 +482,19 @@ export function createTracker({
         ? matchingCheckpoint
         : mirror
     );
-    const reconciled = reconcileWorkerState(baseState, snapshot, configuredSites, clock.now());
+    const reconciled = reconcileWorkerState(
+      baseState,
+      snapshot,
+      configuredSites,
+      clock.now(),
+      siteConfigurationSignature(configuredSites),
+    );
     const authoritativeBehind = (
       matchingCheckpoint === null || matchingCheckpoint.revision < baseState.revision
     );
     const needsCommit = (
       authoritativeBehind ||
+      !sameValue(matchingCheckpoint, reconciled.state) ||
       !sameValue(reconciled.state, baseState) ||
       reconciled.effects.length > 0
     );
@@ -439,6 +517,10 @@ export function createTracker({
     ]);
     const snapshot = await captureSnapshot(configuredSites);
     sites = copy(configuredSites);
+    if (checkpoint?.bootstrapPending === true) {
+      await resumeBrowserBootstrap(configuredSites, checkpoint, snapshot);
+      return;
+    }
     if (mirror === null) {
       await initializeBrowserRestart(configuredSites, snapshot);
       return;
