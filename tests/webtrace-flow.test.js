@@ -180,3 +180,27 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   );
   assert.equal((await harness.listSites())[0].enabled, true);
 });
+
+test("treats an observable non-HTTP top-level commit as leaving the configured site", async t => {
+  const startedAt = new Date(2026, 8, 1, 16, 30, 0).getTime();
+  const harness = await createWebTraceHarness({ now: startedAt });
+  t.after(() => harness.close());
+
+  const site = await harness.addSite({
+    name: "知乎",
+    input: "zhihu.com",
+  });
+
+  await harness.navigate(1, "https://example.org/");
+  await harness.navigate(1, "https://www.zhihu.com/first");
+  assert.equal((await harness.getVisits(site.id)).length, 1);
+
+  await harness.navigate(1, "chrome://extensions/");
+  const [firstVisit] = await harness.getVisits(site.id);
+  assert.equal(firstVisit.endedAt, startedAt);
+
+  await harness.navigate(1, "https://www.zhihu.com/second");
+  const visits = await harness.getVisits(site.id);
+  assert.equal(visits.length, 2);
+  assert.equal(visits[1].endedAt, null);
+});

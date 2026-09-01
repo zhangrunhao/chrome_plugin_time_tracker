@@ -8,14 +8,6 @@ import {
   WEBTRACE_SET_SITE_ENABLED,
 } from "../shared/protocol.js";
 
-function isHttpUrl(url) {
-  try {
-    return ["http:", "https:"].includes(new URL(url).protocol);
-  } catch {
-    return false;
-  }
-}
-
 function ignoreRejection(promise) {
   promise.catch(() => {});
   return promise;
@@ -180,7 +172,7 @@ export function registerChromeEvents({
     ) {
       ignoreRejection(forgetAnalysisPage(chrome, details.tabId));
     }
-    if (details.frameId !== 0 || !isHttpUrl(details.url)) {
+    if (details.frameId !== 0) {
       return undefined;
     }
     const at = clock.now();

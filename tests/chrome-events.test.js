@@ -262,7 +262,18 @@ test("forwards filtered browser events with only injected-clock timestamps", asy
     url: "chrome://extensions",
     timeStamp: 123,
   });
-  assert.equal(harness.tracker.dispatchCalls.length, 0);
+  assert.deepEqual(harness.tracker.dispatchCalls, [
+    {
+      type: "NAVIGATION_COMMITTED",
+      tabId: 1,
+      windowId: 2,
+      url: "chrome://extensions",
+      documentId: null,
+      transitionType: undefined,
+      transitionQualifiers: undefined,
+      at: 8_000,
+    },
+  ]);
 
   await harness.events.webNavigationOnCommitted.emit({
     tabId: 1,
@@ -289,6 +300,16 @@ test("forwards filtered browser events with only injected-clock timestamps", asy
   await harness.events.idleOnStateChanged.emit("locked");
 
   assert.deepEqual(harness.tracker.dispatchCalls, [
+    {
+      type: "NAVIGATION_COMMITTED",
+      tabId: 1,
+      windowId: 2,
+      url: "chrome://extensions",
+      documentId: null,
+      transitionType: undefined,
+      transitionQualifiers: undefined,
+      at: 8_000,
+    },
     {
       type: "NAVIGATION_COMMITTED",
       tabId: 1,
