@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>WebTrace</title>
+    <link rel="stylesheet" href="analysis.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside id="site-list" aria-label="统计网站"></aside>
+      <main>
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">本机使用记录</p>
+            <h1>WebTrace</h1>
+          </div>
+          <button id="manage-sites" class="primary-button" type="button">管理网站</button>
+        </header>
+
+        <div id="error-banner" role="alert" hidden></div>
+
+        <section id="summary" class="panel" aria-label="最近 7 天合计"></section>
+
+        <div class="chart-grid">
+          <section id="open-chart" class="panel" aria-label="每日打开次数"></section>
+          <section id="duration-chart" class="panel" aria-label="每日有效使用时长"></section>
+        </div>
+
+        <section class="panel detail-panel" aria-labelledby="visit-details-title">
+          <div class="section-heading">
+            <h2 id="visit-details-title">访问明细</h2>
+            <p>明细按打开日期归属；跨午夜时长会拆分到趋势对应日期。</p>
+          </div>
+          <div id="visit-details"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="site-manager" aria-label="网站管理"></dialog>
+    <script type="module" src="analysis.js"></script>
+  </body>
+</html>
