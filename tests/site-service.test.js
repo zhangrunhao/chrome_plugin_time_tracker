@@ -226,6 +226,23 @@ test("keeps saved configuration authoritative and marks it dirty when tracker sy
   assert.deepEqual(tracker.markSitesDirtyCalls, [[savedSite]]);
 });
 
+test("continues serialized operations after a site synchronization failure", async () => {
+  const { service, repository, tracker } = createHarness({ updateSitesFailures: 1 });
+
+  await expectServiceError(
+    service.addSite({ name: "知乎", input: "zhihu.com" }),
+    "SITE_STATE_SYNC_FAILED",
+  );
+  const second = await service.addSite({ name: "B 站", input: "bilibili.com" });
+
+  assert.equal(second.domain, "bilibili.com");
+  assert.deepEqual(
+    repository.snapshot().map(site => site.domain),
+    ["zhihu.com", "bilibili.com"],
+  );
+  assert.equal(tracker.updateSitesCalls.length, 2);
+});
+
 test("deletes only visit history and leaves site configuration byte-for-byte unchanged", async () => {
   const site = {
     id: "site-1",

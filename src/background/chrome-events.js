@@ -67,6 +67,27 @@ function stackWithoutMessage(error) {
   return error.stack.split("\n").slice(1).join("\n");
 }
 
+function siteCommandFor(message, siteService) {
+  switch (message?.type) {
+    case WEBTRACE_ADD_SITE:
+      return () => siteService.addSite({
+        name: message.name,
+        input: message.input,
+      });
+    case WEBTRACE_SET_SITE_ENABLED:
+      return () => siteService.setSiteEnabled({
+        siteId: message.siteId,
+        enabled: message.enabled,
+      });
+    case WEBTRACE_DELETE_SITE_HISTORY:
+      return () => siteService.deleteSiteHistory({
+        siteId: message.siteId,
+      });
+    default:
+      return null;
+  }
+}
+
 export function registerChromeEvents({
   chrome,
   tracker,
@@ -176,45 +197,31 @@ export function registerChromeEvents({
       return false;
     }
 
-    const command = {
-      [WEBTRACE_ADD_SITE]: () => siteService.addSite({
-        name: message.name,
-        input: message.input,
-      }),
-      [WEBTRACE_SET_SITE_ENABLED]: () => siteService.setSiteEnabled({
-        siteId: message.siteId,
-        enabled: message.enabled,
-      }),
-      [WEBTRACE_DELETE_SITE_HISTORY]: () => siteService.deleteSiteHistory({
-        siteId: message.siteId,
-      }),
-    }[message?.type];
+    const command = siteCommandFor(message, siteService);
     const extensionBaseUrl = chrome.runtime.getURL("");
     if (
-      command === undefined ||
+      command === null ||
       typeof sender?.url !== "string" ||
       !sender.url.startsWith(extensionBaseUrl)
     ) {
       return false;
     }
 
-    Promise.resolve()
-      .then(command)
-      .then(
-        data => sendResponse(createSuccessResponse(data)),
-        error => {
-          const response = createErrorResponse(error);
-          try {
-            reportError({
-              code: response.error.code,
-              stack: stackWithoutMessage(error),
-            });
-          } catch {
-            // Error reporting must not suppress the command response.
-          }
-          sendResponse(response);
-        },
-      );
+    reserveLifecycle(command).then(
+      data => sendResponse(createSuccessResponse(data)),
+      error => {
+        const response = createErrorResponse(error);
+        try {
+          reportError({
+            code: response.error.code,
+            stack: stackWithoutMessage(error),
+          });
+        } catch {
+          // Error reporting must not suppress the command response.
+        }
+        sendResponse(response);
+      },
+    );
     return true;
   });
 
