@@ -5,6 +5,12 @@ import {
   openOrFocusAnalysisPage,
   registerChromeEvents,
 } from "../src/background/chrome-events.js";
+import {
+  SITE_ERROR_MESSAGES,
+  WEBTRACE_ADD_SITE,
+  WEBTRACE_DELETE_SITE_HISTORY,
+  WEBTRACE_SET_SITE_ENABLED,
+} from "../src/shared/protocol.js";
 
 function deferred() {
   let resolve;
@@ -43,6 +49,7 @@ function createChromeHarness({
   storageAccessError = null,
   tabsGetReady = Promise.resolve(),
   tabsCreateReady = Promise.resolve(),
+  siteService: injectedSiteService,
 } = {}) {
   const events = {
     webNavigationOnCommitted: createFakeEvent(),
@@ -176,6 +183,25 @@ function createChromeHarness({
       tracker.dispatchCalls.push(structuredClone(event));
     },
   };
+  const siteService = injectedSiteService ?? {
+    addSiteCalls: [],
+    setSiteEnabledCalls: [],
+    deleteSiteHistoryCalls: [],
+    async addSite(input) {
+      this.addSiteCalls.push(structuredClone(input));
+      return { id: "site-1", ...structuredClone(input) };
+    },
+    async setSiteEnabled(input) {
+      this.setSiteEnabledCalls.push(structuredClone(input));
+      return structuredClone(input);
+    },
+    async deleteSiteHistory(input) {
+      this.deleteSiteHistoryCalls.push(structuredClone(input));
+      return structuredClone(input);
+    },
+  };
+  const reportedErrors = [];
+  const reportError = error => reportedErrors.push(structuredClone(error));
   const clock = {
     now() {
       return currentNow;
@@ -185,7 +211,16 @@ function createChromeHarness({
     },
   };
 
-  return { chrome, tracker, siteService: undefined, clock, events, calls };
+  return {
+    chrome,
+    tracker,
+    siteService,
+    clock,
+    events,
+    calls,
+    reportError,
+    reportedErrors,
+  };
 }
 
 test("registers every Chrome listener synchronously", () => {
@@ -308,6 +343,112 @@ test("accepts visibility only from a tab sender and ignores page timestamps", as
     at: 8_000,
   });
   assert.equal(JSON.stringify(harness.tracker.dispatchCalls[0]).includes("private/path"), false);
+});
+
+test("handles each trusted analysis command with one successful response envelope", async () => {
+  const harness = createChromeHarness();
+  registerChromeEvents(harness);
+  const sender = { url: "chrome-extension://test/analysis.html" };
+  const commands = [
+    {
+      message: { type: WEBTRACE_ADD_SITE, name: "知乎", input: "zhihu.com" },
+      expectedCall: ["addSiteCalls", { name: "知乎", input: "zhihu.com" }],
+      expectedData: { id: "site-1", name: "知乎", input: "zhihu.com" },
+    },
+    {
+      message: { type: WEBTRACE_SET_SITE_ENABLED, siteId: "site-1", enabled: false },
+      expectedCall: ["setSiteEnabledCalls", { siteId: "site-1", enabled: false }],
+      expectedData: { siteId: "site-1", enabled: false },
+    },
+    {
+      message: { type: WEBTRACE_DELETE_SITE_HISTORY, siteId: "site-1" },
+      expectedCall: ["deleteSiteHistoryCalls", { siteId: "site-1" }],
+      expectedData: { siteId: "site-1" },
+    },
+  ];
+
+  for (const command of commands) {
+    const responses = [];
+    const responseReady = deferred();
+    const [listenerReturn] = await harness.events.runtimeOnMessage.emit(
+      command.message,
+      sender,
+      response => {
+        responses.push(structuredClone(response));
+        responseReady.resolve();
+      },
+    );
+    await responseReady.promise;
+
+    assert.equal(listenerReturn, true);
+    assert.deepEqual(
+      harness.siteService[command.expectedCall[0]].at(-1),
+      command.expectedCall[1],
+    );
+    assert.deepEqual(responses, [{ ok: true, data: command.expectedData }]);
+  }
+});
+
+test("returns one stable error envelope and reports only code and stack", async () => {
+  const failure = Object.assign(new Error(SITE_ERROR_MESSAGES.DUPLICATE_SITE), {
+    code: "DUPLICATE_SITE",
+  });
+  const siteService = {
+    async addSite() {
+      throw failure;
+    },
+    async setSiteEnabled() {},
+    async deleteSiteHistory() {},
+  };
+  const harness = createChromeHarness({ siteService });
+  registerChromeEvents(harness);
+  const responses = [];
+  const responseReady = deferred();
+
+  const [listenerReturn] = await harness.events.runtimeOnMessage.emit(
+    { type: WEBTRACE_ADD_SITE, name: "知乎", input: "zhihu.com" },
+    { url: "chrome-extension://test/analysis.html" },
+    response => {
+      responses.push(structuredClone(response));
+      responseReady.resolve();
+    },
+  );
+  await responseReady.promise;
+
+  assert.equal(listenerReturn, true);
+  assert.deepEqual(responses, [{
+    ok: false,
+    error: {
+      code: "DUPLICATE_SITE",
+      message: SITE_ERROR_MESSAGES.DUPLICATE_SITE,
+    },
+  }]);
+  assert.equal(harness.reportedErrors.length, 1);
+  assert.deepEqual(Object.keys(harness.reportedErrors[0]).sort(), ["code", "stack"]);
+  assert.equal(harness.reportedErrors[0].code, "DUPLICATE_SITE");
+  assert.equal(typeof harness.reportedErrors[0].stack, "string");
+});
+
+test("rejects management commands from web pages and unknown message types synchronously", async () => {
+  const harness = createChromeHarness();
+  registerChromeEvents(harness);
+  const responses = [];
+
+  const [untrustedReturn] = await harness.events.runtimeOnMessage.emit(
+    { type: WEBTRACE_ADD_SITE, name: "知乎", input: "zhihu.com" },
+    { url: "https://www.zhihu.com/" },
+    response => responses.push(response),
+  );
+  const [unknownReturn] = await harness.events.runtimeOnMessage.emit(
+    { type: "WEBTRACE_UNKNOWN" },
+    { url: "chrome-extension://test/analysis.html" },
+    response => responses.push(response),
+  );
+
+  assert.equal(untrustedReturn, false);
+  assert.equal(unknownReturn, false);
+  assert.deepEqual(responses, []);
+  assert.deepEqual(harness.siteService.addSiteCalls, []);
 });
 
 test("queues browser events behind tracker readiness", async () => {

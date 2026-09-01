@@ -1,4 +1,11 @@
-import { WEBTRACE_PAGE_VISIBILITY } from "../shared/protocol.js";
+import {
+  createErrorResponse,
+  createSuccessResponse,
+  WEBTRACE_ADD_SITE,
+  WEBTRACE_DELETE_SITE_HISTORY,
+  WEBTRACE_PAGE_VISIBILITY,
+  WEBTRACE_SET_SITE_ENABLED,
+} from "../shared/protocol.js";
 
 function isHttpUrl(url) {
   try {
@@ -53,7 +60,28 @@ export function openOrFocusAnalysisPage(chrome) {
   return operation;
 }
 
-export function registerChromeEvents({ chrome, tracker, siteService: _siteService, clock }) {
+function stackWithoutMessage(error) {
+  if (typeof error?.stack !== "string") {
+    return "";
+  }
+  return error.stack.split("\n").slice(1).join("\n");
+}
+
+export function registerChromeEvents({
+  chrome,
+  tracker,
+  siteService,
+  clock,
+  reportError = () => {},
+}) {
+  if (
+    typeof siteService?.addSite !== "function" ||
+    typeof siteService?.setSiteEnabled !== "function" ||
+    typeof siteService?.deleteSiteHistory !== "function"
+  ) {
+    throw new TypeError("A site service is required");
+  }
+
   let lifecycleTail = Promise.resolve();
   const reserveLifecycle = operation => {
     const result = lifecycleTail
@@ -133,22 +161,61 @@ export function registerChromeEvents({ chrome, tracker, siteService: _siteServic
     at: clock.now(),
   }));
 
-  chrome.runtime.onMessage.addListener((message, sender) => {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (
-      message?.type !== WEBTRACE_PAGE_VISIBILITY ||
-      !Number.isInteger(sender?.tab?.id)
+      message?.type === WEBTRACE_PAGE_VISIBILITY &&
+      Number.isInteger(sender?.tab?.id)
+    ) {
+      enqueue({
+        type: "PAGE_VISIBILITY",
+        tabId: sender.tab.id,
+        documentId: sender.documentId ?? null,
+        visible: message.visible === true,
+        at: clock.now(),
+      });
+      return false;
+    }
+
+    const command = {
+      [WEBTRACE_ADD_SITE]: () => siteService.addSite({
+        name: message.name,
+        input: message.input,
+      }),
+      [WEBTRACE_SET_SITE_ENABLED]: () => siteService.setSiteEnabled({
+        siteId: message.siteId,
+        enabled: message.enabled,
+      }),
+      [WEBTRACE_DELETE_SITE_HISTORY]: () => siteService.deleteSiteHistory({
+        siteId: message.siteId,
+      }),
+    }[message?.type];
+    const extensionBaseUrl = chrome.runtime.getURL("");
+    if (
+      command === undefined ||
+      typeof sender?.url !== "string" ||
+      !sender.url.startsWith(extensionBaseUrl)
     ) {
       return false;
     }
 
-    enqueue({
-      type: "PAGE_VISIBILITY",
-      tabId: sender.tab.id,
-      documentId: sender.documentId ?? null,
-      visible: message.visible === true,
-      at: clock.now(),
-    });
-    return false;
+    Promise.resolve()
+      .then(command)
+      .then(
+        data => sendResponse(createSuccessResponse(data)),
+        error => {
+          const response = createErrorResponse(error);
+          try {
+            reportError({
+              code: response.error.code,
+              stack: stackWithoutMessage(error),
+            });
+          } catch {
+            // Error reporting must not suppress the command response.
+          }
+          sendResponse(response);
+        },
+      );
+    return true;
   });
 
   chrome.action.onClicked.addListener(() => ignoreRejection(openOrFocusAnalysisPage(chrome)));

@@ -1,4 +1,5 @@
 import { registerChromeEvents } from "./src/background/chrome-events.js";
+import { createSiteService } from "./src/background/site-service.js";
 import { createTracker } from "./src/background/tracker.js";
 import { createSessionRepository } from "./src/storage/session-repository.js";
 import { createSiteRepository } from "./src/storage/site-repository.js";
@@ -8,7 +9,11 @@ import { openWebTraceDb } from "./src/storage/webtrace-db.js";
 const chromeApi = globalThis.chrome;
 const trustedContexts = { accessLevel: "TRUSTED_CONTEXTS" };
 
-function reportError({ code }) {
+function reportError({ code, stack }) {
+  if (typeof stack === "string" && stack !== "") {
+    console.error(code, stack);
+    return;
+  }
   console.error(code);
 }
 
@@ -100,6 +105,8 @@ function deferredTrackingRepository(repositoryReady) {
 }
 
 const storageAccessReady = restrictStorageAccess();
+const clock = { now: () => Date.now() };
+const idFactory = () => crypto.randomUUID();
 const siteRepository = gatedSiteRepository(
   storageAccessReady,
   createSiteRepository(chromeApi.storage.local),
@@ -117,8 +124,8 @@ const tracker = createTracker({
   siteRepository,
   sessionRepository,
   browserSnapshot: createChromeBrowserSnapshot(chromeApi),
-  clock: { now: () => Date.now() },
-  idFactory: () => crypto.randomUUID(),
+  clock,
+  idFactory,
   delay: ms => new Promise(resolve => setTimeout(resolve, ms)),
   reportError,
 });
@@ -126,9 +133,17 @@ const tracker = createTracker({
 export const backgroundReady = tracker.ready;
 backgroundReady.catch(() => {});
 
+const siteService = createSiteService({
+  siteRepository,
+  tracker,
+  clock,
+  idFactory,
+});
+
 registerChromeEvents({
   chrome: chromeApi,
   tracker,
-  siteService: undefined,
-  clock: { now: () => Date.now() },
+  siteService,
+  clock,
+  reportError,
 });
