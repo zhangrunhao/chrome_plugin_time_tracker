@@ -69,9 +69,10 @@ function createVisibilityFake(visible = true) {
 }
 
 class FakeElement {
-  constructor(tagName, id = "") {
+  constructor(tagName, id = "", ownerDocument = null) {
     this.tagName = tagName.toUpperCase();
     this.id = id;
+    this.ownerDocument = ownerDocument;
     this.children = [];
     this.parentNode = null;
     this.attributes = new Map();
@@ -114,6 +115,15 @@ class FakeElement {
   }
 
   replaceChildren(...children) {
+    if (
+      this.ownerDocument !== null &&
+      (
+        this.ownerDocument.activeElement === this ||
+        descendants(this).includes(this.ownerDocument.activeElement)
+      )
+    ) {
+      this.ownerDocument.activeElement = null;
+    }
     this.children = [];
     this._textContent = "";
     this.append(...children);
@@ -161,6 +171,13 @@ class FakeElement {
       }
     }
   }
+
+  focus(options) {
+    if (this.ownerDocument !== null) {
+      this.ownerDocument.activeElement = this;
+    }
+    this.lastFocusOptions = copy(options);
+  }
 }
 
 function descendants(root) {
@@ -182,20 +199,23 @@ function createDocumentFake() {
     "site-manager",
     "error-banner",
   ];
-  const elements = new Map(ids.map(id => [
-    id,
-    new FakeElement(id === "site-manager" ? "dialog" : "div", id),
-  ]));
-  elements.get("manage-sites").tagName = "BUTTON";
-  return {
+  const document = {
+    activeElement: null,
     createElement(tagName) {
-      return new FakeElement(tagName);
+      return new FakeElement(tagName, "", document);
     },
     getElementById(id) {
       return elements.get(id) ?? null;
     },
-    elements,
+    elements: null,
   };
+  const elements = new Map(ids.map(id => [
+    id,
+    new FakeElement(id === "site-manager" ? "dialog" : "div", id, document),
+  ]));
+  elements.get("manage-sites").tagName = "BUTTON";
+  document.elements = elements;
+  return document;
 }
 
 function createAnalysisHarness({
@@ -580,6 +600,118 @@ test("coalesces a refresh requested during an in-flight refresh without overlap"
   assert.equal(listCalls, 2);
 });
 
+test("runs a queued refresh after the in-flight site read rejects", async () => {
+  const failedList = deferred();
+  const failedListStarted = deferred();
+  let listCalls = 0;
+  let activeReads = 0;
+  let maximumActiveReads = 0;
+  const report = {
+    siteId: "s1",
+    days: [{ dateKey: TODAY, openCount: 0, activeMs: 0 }],
+    totals: { openCount: 0, activeMs: 0 },
+    selectedDateKey: TODAY,
+    details: [],
+  };
+  const dataSource = {
+    async listSites() {
+      listCalls += 1;
+      activeReads += 1;
+      maximumActiveReads = Math.max(maximumActiveReads, activeReads);
+      try {
+        if (listCalls === 2) {
+          failedListStarted.resolve();
+          return await failedList.promise;
+        }
+        return copy(SITES);
+      } finally {
+        activeReads -= 1;
+      }
+    },
+    async getReport() {
+      activeReads += 1;
+      maximumActiveReads = Math.max(maximumActiveReads, activeReads);
+      activeReads -= 1;
+      return copy(report);
+    },
+  };
+  const view = createViewFake();
+  const controller = createAnalysisController({
+    dataSource,
+    view,
+    clock: { now: () => NOW },
+  });
+  await controller.initialize();
+
+  const failedRefresh = controller.refresh();
+  await failedListStarted.promise;
+  const queuedRefresh = controller.refresh();
+  failedList.reject(new Error("site read failed"));
+  await Promise.all([failedRefresh, queuedRefresh]);
+
+  assert.equal(listCalls, 3);
+  assert.equal(maximumActiveReads, 1);
+  assert.equal(view.lastModel.report.siteId, "s1");
+});
+
+test("runs a queued latest selection after the in-flight report read rejects", async () => {
+  const failedReport = deferred();
+  const failedReportStarted = deferred();
+  let listCalls = 0;
+  let reportCalls = 0;
+  let activeReads = 0;
+  let maximumActiveReads = 0;
+  const reportFor = siteId => ({
+    siteId,
+    days: [{ dateKey: TODAY, openCount: 0, activeMs: 0 }],
+    totals: { openCount: 0, activeMs: 0 },
+    selectedDateKey: TODAY,
+    details: [],
+  });
+  const dataSource = {
+    async listSites() {
+      listCalls += 1;
+      activeReads += 1;
+      maximumActiveReads = Math.max(maximumActiveReads, activeReads);
+      activeReads -= 1;
+      return copy(SITES);
+    },
+    async getReport(siteId) {
+      reportCalls += 1;
+      activeReads += 1;
+      maximumActiveReads = Math.max(maximumActiveReads, activeReads);
+      try {
+        if (reportCalls === 2) {
+          failedReportStarted.resolve();
+          return await failedReport.promise;
+        }
+        return reportFor(siteId);
+      } finally {
+        activeReads -= 1;
+      }
+    },
+  };
+  const view = createViewFake();
+  const controller = createAnalysisController({
+    dataSource,
+    view,
+    clock: { now: () => NOW },
+  });
+  await controller.initialize();
+
+  const failedRefresh = controller.refresh();
+  await failedReportStarted.promise;
+  const latestSelection = controller.selectSite("disabled-site");
+  failedReport.reject(new Error("report read failed"));
+  await Promise.all([failedRefresh, latestSelection]);
+
+  assert.equal(listCalls, 3);
+  assert.equal(reportCalls, 3);
+  assert.equal(maximumActiveReads, 1);
+  assert.equal(view.lastModel.selectedSiteId, "disabled-site");
+  assert.equal(view.lastModel.report.siteId, "disabled-site");
+});
+
 test("serializes rapid site selections so a stale report cannot replace the latest site", async () => {
   const disabledReport = deferred();
   const enabledReport = deferred();
@@ -902,4 +1034,112 @@ test("keeps an in-progress site form intact across report-only renders", async (
     "正在输入的网站",
     "example.com/path",
   ]);
+});
+
+test("mirrors stable operation errors into an open modal dialog alert", async () => {
+  const document = createDocumentFake();
+  const view = createAnalysisView({ document });
+  view.bind({
+    selectSite() {},
+    selectDate() {},
+    addSite() {},
+    setSiteEnabled() {},
+    requestDeleteHistory() {},
+    cancelDeleteHistory() {},
+    confirmDeleteHistory() {},
+  });
+  const model = {
+    mode: "READY",
+    sites: [SITES[1]],
+    selectedSiteId: "s1",
+    selectedDateKey: TODAY,
+    report: { days: [], totals: { openCount: 0, activeMs: 0 }, details: [] },
+    error: null,
+    pending: false,
+    deleteConfirmationSiteId: null,
+  };
+  view.render(model);
+  await document.elements.get("manage-sites").click();
+  const dialog = document.elements.get("site-manager");
+
+  for (const error of [
+    { code: "DUPLICATE_SITE", message: "该网站已经添加" },
+    { code: "SITE_STATE_SYNC_FAILED", message: "网站配置已保存，但采集状态同步失败，请重试" },
+    { code: "DELETE_HISTORY_FAILED", message: "删除历史失败，请重试" },
+  ]) {
+    view.render({ ...model, error });
+    const dialogAlerts = descendants(dialog).filter(
+      element => element.getAttribute("role") === "alert",
+    );
+    assert.equal(dialogAlerts.length, 1);
+    assert.equal(dialogAlerts[0].hidden, false);
+    assert.equal(dialogAlerts[0].textContent, error.message);
+  }
+});
+
+test("restores focus to replaced site and both chart buttons without scrolling", () => {
+  const document = createDocumentFake();
+  const view = createAnalysisView({ document });
+  view.bind({ selectSite() {}, selectDate() {} });
+  const days = Array.from({ length: 7 }, (_, index) => ({
+    dateKey: `2026-08-${25 + index}`,
+    openCount: index,
+    activeMs: index * 1_000,
+  }));
+  const model = {
+    mode: "READY",
+    sites: SITES,
+    selectedSiteId: "s1",
+    selectedDateKey: TODAY,
+    report: {
+      days,
+      totals: { openCount: 21, activeMs: 21_000 },
+      selectedDateKey: TODAY,
+      details: [],
+    },
+    error: null,
+    pending: false,
+    deleteConfirmationSiteId: null,
+  };
+  view.render(model);
+
+  const originalSite = byDataset(document.elements.get("site-list"), "siteId", "s1")[0];
+  originalSite.focus();
+  view.render({ ...model, report: { ...model.report, totals: { openCount: 22, activeMs: 22_000 } } });
+  const restoredSite = byDataset(document.elements.get("site-list"), "siteId", "s1")[0];
+  assert.notEqual(restoredSite, originalSite);
+  assert.equal(document.activeElement, restoredSite);
+  assert.deepEqual(restoredSite.lastFocusOptions, { preventScroll: true });
+
+  const originalOpenDate = byDataset(
+    document.elements.get("open-chart"),
+    "dateKey",
+    "2026-08-27",
+  )[0];
+  originalOpenDate.focus();
+  view.render({ ...model, report: { ...model.report, totals: { openCount: 23, activeMs: 23_000 } } });
+  const restoredOpenDate = byDataset(
+    document.elements.get("open-chart"),
+    "dateKey",
+    "2026-08-27",
+  )[0];
+  assert.notEqual(restoredOpenDate, originalOpenDate);
+  assert.equal(document.activeElement, restoredOpenDate);
+  assert.deepEqual(restoredOpenDate.lastFocusOptions, { preventScroll: true });
+
+  const originalDurationDate = byDataset(
+    document.elements.get("duration-chart"),
+    "dateKey",
+    "2026-08-27",
+  )[0];
+  originalDurationDate.focus();
+  view.render({ ...model, report: { ...model.report, totals: { openCount: 24, activeMs: 24_000 } } });
+  const restoredDurationDate = byDataset(
+    document.elements.get("duration-chart"),
+    "dateKey",
+    "2026-08-27",
+  )[0];
+  assert.notEqual(restoredDurationDate, originalDurationDate);
+  assert.equal(document.activeElement, restoredDurationDate);
+  assert.deepEqual(restoredDurationDate.lastFocusOptions, { preventScroll: true });
 });

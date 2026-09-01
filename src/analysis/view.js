@@ -65,6 +65,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
   };
   let controller = null;
   let managerRenderKey = null;
+  let dialogError = null;
 
   regions.manageSites.addEventListener("click", () => {
     if (!regions.siteManager.open) {
@@ -72,14 +73,61 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     }
   });
 
+  function belongsTo(node, region) {
+    let current = node;
+    while (current !== null && current !== undefined) {
+      if (current === region) {
+        return true;
+      }
+      current = current.parentNode;
+    }
+    return false;
+  }
+
+  function captureFocusToken() {
+    const active = document.activeElement;
+    if (belongsTo(active, regions.siteList) && typeof active?.dataset?.siteId === "string") {
+      return { kind: "site", key: active.dataset.siteId };
+    }
+    if (belongsTo(active, regions.openChart) && typeof active?.dataset?.dateKey === "string") {
+      return { kind: "open-chart", key: active.dataset.dateKey };
+    }
+    if (belongsTo(active, regions.durationChart) && typeof active?.dataset?.dateKey === "string") {
+      return { kind: "duration-chart", key: active.dataset.dateKey };
+    }
+    return null;
+  }
+
+  function restoreFocus(token, controls) {
+    if (token === null) {
+      return;
+    }
+    const target = controls[token.kind]?.get(token.key);
+    if (typeof target?.focus === "function") {
+      target.focus({ preventScroll: true });
+    }
+  }
+
   function renderError(error) {
     regions.errorBanner.hidden = error === null;
     regions.errorBanner.textContent = error?.message ?? "";
+    if (dialogError !== null) {
+      dialogError.hidden = error === null;
+      dialogError.textContent = error?.message ?? "";
+    }
+  }
+
+  function createDialogError() {
+    dialogError = element(document, "div", { className: "dialog-error" });
+    dialogError.setAttribute("role", "alert");
+    dialogError.hidden = true;
+    return dialogError;
   }
 
   function renderSites(model) {
     const heading = element(document, "h2", { text: "统计网站" });
     const items = element(document, "div", { className: "site-options" });
+    const buttons = new Map();
     if (model.sites.length === 0) {
       items.append(element(document, "p", {
         className: "empty-copy",
@@ -94,6 +142,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       button.disabled = model.pending;
       button.setAttribute("aria-pressed", String(site.id === model.selectedSiteId));
       button.addEventListener("click", () => controller?.selectSite(site.id));
+      buttons.set(site.id, button);
       button.append(
         element(document, "strong", { className: "site-name", text: site.name }),
         element(document, "span", { className: "site-domain", text: site.domain }),
@@ -105,6 +154,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       items.append(button);
     }
     regions.siteList.replaceChildren(heading, items);
+    return buttons;
   }
 
   function renderSummary(model) {
@@ -121,6 +171,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     const chart = element(document, "div", { className: "trend-chart" });
     const days = model.report?.days ?? [];
     const maximum = Math.max(0, ...days.map(valueFor));
+    const buttons = new Map();
 
     for (const day of days) {
       const value = valueFor(day);
@@ -132,6 +183,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       button.setAttribute("aria-pressed", String(day.dateKey === model.selectedDateKey));
       button.setAttribute("aria-label", `${day.dateKey}，${formattedValue}${unit}`);
       button.addEventListener("click", () => controller?.selectDate(day.dateKey));
+      buttons.set(day.dateKey, button);
 
       const barTrack = element(document, "span", { className: "chart-track" });
       const bar = element(document, "span", { className: "chart-bar" });
@@ -148,6 +200,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       chart.append(button);
     }
     region.replaceChildren(heading, chart);
+    return buttons;
   }
 
   function renderDetails(model) {
@@ -219,7 +272,13 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
         "confirm-delete",
       ),
     );
-    regions.siteManager.replaceChildren(heading, siteName, warning, actions);
+    regions.siteManager.replaceChildren(
+      heading,
+      createDialogError(),
+      siteName,
+      warning,
+      actions,
+    );
   }
 
   function renderManager(model) {
@@ -313,6 +372,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     regions.siteManager.replaceChildren(
       heading,
       close,
+      createDialogError(),
       form,
       listHeading,
       siteRows,
@@ -339,17 +399,17 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     },
 
     render(model) {
+      const focusToken = captureFocusToken();
       regions.manageSites.disabled = model.pending;
-      renderError(model.error);
-      renderSites(model);
+      const siteButtons = renderSites(model);
       renderSummary(model);
-      renderChart(regions.openChart, model, {
+      const openChartButtons = renderChart(regions.openChart, model, {
         title: "每日打开次数",
         valueFor: day => day.openCount,
         formatValue: value => String(value),
         unit: " 次",
       });
-      renderChart(regions.durationChart, model, {
+      const durationChartButtons = renderChart(regions.durationChart, model, {
         title: "每日有效使用时长",
         valueFor: day => day.activeMs,
         formatValue: formatDuration,
@@ -361,6 +421,12 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
         renderManager(model);
         managerRenderKey = nextManagerKey;
       }
+      renderError(model.error);
+      restoreFocus(focusToken, {
+        site: siteButtons,
+        "open-chart": openChartButtons,
+        "duration-chart": durationChartButtons,
+      });
     },
   };
 }

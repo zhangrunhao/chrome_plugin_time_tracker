@@ -163,14 +163,16 @@ export function createAnalysisController({
         refreshPending = false;
         const nextPreferredSiteId = preferredSiteId;
         preferredSiteId = null;
-        await loadOnce(nextPreferredSiteId);
+        try {
+          await loadOnce(nextPreferredSiteId);
+        } catch (error) {
+          if (state.error === null) {
+            state.error = publicError(error);
+          }
+          render();
+        }
       } while (refreshPending);
-    })().catch(error => {
-      if (state.error === null) {
-        state.error = publicError(error);
-      }
-      render();
-    }).finally(() => {
+    })().finally(() => {
       refreshPromise = null;
     });
     return refreshPromise;
