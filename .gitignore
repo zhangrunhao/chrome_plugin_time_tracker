@@ -19,3 +19,5 @@ Icon?
 
 # Local brainstorming previews and server state
 .superpowers/
+
+/node_modules/

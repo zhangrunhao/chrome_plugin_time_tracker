@@ -1,0 +1,14 @@
+{
+  "name": "webtrace-extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "vendor:tldts": "node scripts/vendor-tldts.mjs"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.5",
+    "tldts": "7.4.11"
+  }
+}
