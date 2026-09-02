@@ -1,16 +1,5 @@
 import { getVisitDurationMs } from "./visit-time.js";
-import {
-  getRollingDateRange,
-  localDateKey,
-  resolveDateRange,
-} from "./local-date-range.js";
-
-export { localDateKey } from "./local-date-range.js";
-
-export function getSevenDayWindow(now) {
-  const range = getRollingDateRange(now, 7);
-  return resolveDateRange({ ...range, todayDateKey: localDateKey(now) });
-}
+import { localDateKey } from "./local-date-range.js";
 
 export function splitIntervalByLocalDay(startedAt, endedAt) {
   const parts = [];
@@ -96,37 +85,5 @@ export function aggregateReport(
     days,
     selectedDateKey,
     details: selectedDetails(rangeVisits, selectedDateKey, now),
-  };
-}
-
-export function aggregateSevenDayReport(visits, { now, selectedDateKey }) {
-  const rangeWindow = getSevenDayWindow(now);
-  const todayRange = getRollingDateRange(now, 1);
-  const todayWindow = resolveDateRange({
-    ...todayRange,
-    todayDateKey: localDateKey(now),
-  });
-  const report = aggregateReport({
-    rangeVisits: visits,
-    todayVisits: visits,
-  }, {
-    now,
-    rangeWindow,
-    todayWindow,
-    selectedDateKey,
-  });
-  const totals = report.days.reduce(
-    (result, day) => ({
-      openCount: result.openCount + day.openCount,
-      activeMs: result.activeMs + day.activeMs,
-    }),
-    { openCount: 0, activeMs: 0 },
-  );
-
-  return {
-    days: report.days,
-    totals,
-    selectedDateKey: report.selectedDateKey,
-    details: report.details,
   };
 }

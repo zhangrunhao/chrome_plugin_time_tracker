@@ -3,7 +3,10 @@ import { createAnalysisDataSource } from "../../src/analysis/data-source.js";
 import { registerChromeEvents } from "../../src/background/chrome-events.js";
 import { createSiteService } from "../../src/background/site-service.js";
 import { createTracker } from "../../src/background/tracker.js";
-import { localDateKey } from "../../src/domain/report.js";
+import {
+  getRollingDateRange,
+  localDateKey,
+} from "../../src/domain/local-date-range.js";
 import { createSessionRepository } from "../../src/storage/session-repository.js";
 import { createSiteRepository } from "../../src/storage/site-repository.js";
 import { createTrackingRepository } from "../../src/storage/tracking-repository.js";
@@ -412,8 +415,16 @@ export async function createWebTraceHarness({ now }) {
       ));
     },
 
-    getReport(siteId, selectedDateKey = localDateKey(clock.now())) {
-      return dataSource.getReport(siteId, selectedDateKey);
+    getReport(siteId, {
+      startDateKey = getRollingDateRange(clock.now()).startDateKey,
+      endDateKey = localDateKey(clock.now()),
+      selectedDateKey = endDateKey,
+    } = {}) {
+      return dataSource.getReport(siteId, {
+        startDateKey,
+        endDateKey,
+        selectedDateKey,
+      });
     },
 
     close() {

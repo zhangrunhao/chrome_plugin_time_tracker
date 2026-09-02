@@ -2,12 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   aggregateReport,
-  aggregateSevenDayReport,
-  getSevenDayWindow,
-  localDateKey,
   splitIntervalByLocalDay,
 } from "../src/domain/report.js";
-import { resolveDateRange } from "../src/domain/local-date-range.js";
+import {
+  getRollingDateRange,
+  localDateKey,
+  resolveDateRange,
+} from "../src/domain/local-date-range.js";
 
 function visitAt(id, openedAt, durationMs) {
   const endedAt = openedAt + durationMs;
@@ -20,6 +21,28 @@ function visitAt(id, openedAt, durationMs) {
     lastConfirmedAt: endedAt,
     lastActivityAt: endedAt,
   };
+}
+
+function aggregateRollingReport(visits, { now, selectedDateKey, dayCount = 7 }) {
+  const todayDateKey = localDateKey(now);
+  const rangeWindow = resolveDateRange({
+    ...getRollingDateRange(now, dayCount),
+    todayDateKey,
+  });
+  const todayWindow = resolveDateRange({
+    startDateKey: todayDateKey,
+    endDateKey: todayDateKey,
+    todayDateKey,
+  });
+  return aggregateReport({
+    rangeVisits: visits,
+    todayVisits: visits,
+  }, {
+    now,
+    rangeWindow,
+    todayWindow,
+    selectedDateKey,
+  });
 }
 
 test("returns range days and an independent today summary", () => {
@@ -66,7 +89,7 @@ test("splits duration at local midnight but keeps the open on openedAt day", () 
     lastConfirmedAt: endedAt,
     lastActivityAt: endedAt,
   };
-  const report = aggregateSevenDayReport([visit], {
+  const report = aggregateRollingReport([visit], {
     now: new Date(2026, 7, 31, 12).getTime(),
     selectedDateKey: localDateKey(openedAt),
   });
@@ -79,12 +102,12 @@ test("splits duration at local midnight but keeps the open on openedAt day", () 
 
 test("returns seven ordered zero-filled days", () => {
   const now = new Date(2026, 7, 31, 12).getTime();
-  const report = aggregateSevenDayReport([], {
+  const report = aggregateRollingReport([], {
     now,
     selectedDateKey: localDateKey(now),
   });
   assert.equal(report.days.length, 7);
-  assert.deepEqual(report.totals, { openCount: 0, activeMs: 0 });
+  assert.deepEqual(report.todaySummary, { openCount: 0, activeMs: 0 });
   assert.deepEqual(report.details, []);
   assert.ok(report.days.every(day => day.openCount === 0 && day.activeMs === 0));
   assert.deepEqual(
@@ -97,7 +120,7 @@ test("counts interval overlap for a visit opened before the seven-day window", (
   const now = new Date(2026, 7, 31, 12).getTime();
   const startedAt = new Date(2026, 7, 24, 23, 59, 50).getTime();
   const endedAt = new Date(2026, 7, 25, 0, 0, 10).getTime();
-  const report = aggregateSevenDayReport([
+  const report = aggregateRollingReport([
     {
       id: "v1",
       siteId: "s1",
@@ -110,7 +133,10 @@ test("counts interval overlap for a visit opened before the seven-day window", (
   ], { now, selectedDateKey: localDateKey(now) });
 
   assert.deepEqual(report.days[0], { dateKey: "2026-08-25", openCount: 0, activeMs: 10_000 });
-  assert.deepEqual(report.totals, { openCount: 0, activeMs: 10_000 });
+  assert.equal(
+    report.days.reduce((total, day) => total + day.activeMs, 0),
+    10_000,
+  );
 });
 
 test("uses last confirmation for open intervals and keeps full duration with opened-day details", () => {
@@ -118,7 +144,7 @@ test("uses last confirmation for open intervals and keeps full duration with ope
   const openedAt = new Date(2026, 7, 30, 23, 59, 50).getTime();
   const lastConfirmedAt = new Date(2026, 7, 31, 0, 0, 10).getTime();
   const laterOpenedAt = new Date(2026, 7, 30, 8, 0, 0).getTime();
-  const report = aggregateSevenDayReport([
+  const report = aggregateRollingReport([
     {
       id: "oldest",
       siteId: "s1",
@@ -150,11 +176,15 @@ test("uses last confirmation for open intervals and keeps full duration with ope
   });
 });
 
-test("uses local calendar boundaries for day splits and the seven-day window", () => {
+test("uses local calendar boundaries for day splits and a rolling window", () => {
   const now = new Date(2026, 7, 31, 12).getTime();
   const startedAt = new Date(2026, 7, 30, 23, 59, 59).getTime();
   const endedAt = new Date(2026, 7, 31, 0, 0, 1).getTime();
-  const window = getSevenDayWindow(now);
+  const todayDateKey = localDateKey(now);
+  const window = resolveDateRange({
+    ...getRollingDateRange(now, 7),
+    todayDateKey,
+  });
 
   assert.deepEqual(splitIntervalByLocalDay(startedAt, endedAt), [
     { dateKey: "2026-08-30", durationMs: 1_000 },

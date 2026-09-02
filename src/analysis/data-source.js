@@ -1,4 +1,8 @@
-import { aggregateSevenDayReport, getSevenDayWindow } from "../domain/report.js";
+import {
+  localDateKey,
+  resolveDateRange,
+} from "../domain/local-date-range.js";
+import { aggregateReport } from "../domain/report.js";
 import {
   WEBTRACE_ADD_SITE,
   WEBTRACE_DELETE_SITE_HISTORY,
@@ -60,15 +64,40 @@ export function createAnalysisDataSource({
       return siteRepository.list();
     },
 
-    async getReport(siteId, selectedDateKey) {
+    async getReport(siteId, { startDateKey, endDateKey, selectedDateKey }) {
       const now = clock.now();
-      const window = getSevenDayWindow(now);
-      const visits = await trackingRepository.queryVisitsForReport(
+      const todayDateKey = localDateKey(now);
+      const rangeWindow = resolveDateRange({
+        startDateKey,
+        endDateKey,
+        todayDateKey,
+      });
+      const todayWindow = resolveDateRange({
+        startDateKey: todayDateKey,
+        endDateKey: todayDateKey,
+        todayDateKey,
+      });
+      const rangePromise = trackingRepository.queryVisitsForReport(
         siteId,
-        window.startAt,
-        now + 1,
+        rangeWindow.startAt,
+        rangeWindow.endAt,
       );
-      return aggregateSevenDayReport(visits, { now, selectedDateKey });
+      const containsToday = rangeWindow.days.some(day => day.dateKey === todayDateKey);
+      const [rangeVisits, todayVisits] = containsToday
+        ? await rangePromise.then(visits => [visits, visits])
+        : await Promise.all([
+            rangePromise,
+            trackingRepository.queryVisitsForReport(
+              siteId,
+              todayWindow.startAt,
+              todayWindow.endAt,
+            ),
+          ]);
+
+      return aggregateReport(
+        { rangeVisits, todayVisits },
+        { now, rangeWindow, todayWindow, selectedDateKey },
+      );
     },
 
     addSite({ name, input }) {

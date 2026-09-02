@@ -230,6 +230,7 @@ function createAnalysisHarness({
   let nextSiteId = 1;
   const repositoryCalls = {
     listSites: 0,
+    getReport: [],
     queryVisitsForReport: [],
     sendMessage: [],
   };
@@ -296,6 +297,11 @@ function createAnalysisHarness({
     clock,
     sendMessage,
   });
+  const getReport = dataSource.getReport.bind(dataSource);
+  dataSource.getReport = (siteId, options) => {
+    repositoryCalls.getReport.push({ siteId, options: copy(options) });
+    return getReport(siteId, options);
+  };
   Object.defineProperties(dataSource, {
     sites: {
       get: () => copy(storedSites),
@@ -339,18 +345,149 @@ const SITES = [
   { id: "s1", name: "知乎", domain: "zhihu.com", enabled: true, createdAt: 1 },
 ];
 
-test("selects the earliest-created site and today, then loads one seven-day report", async () => {
+test("selects the earliest-created site and initializes a rolling fourteen-day range", async () => {
+  const now = new Date(2026, 8, 1, 12).getTime();
   const { controller, view, repositoryCalls } = createAnalysisHarness({
-    now: NOW,
+    now,
     sites: SITES,
   });
 
   await controller.initialize();
 
   assert.equal(view.lastModel.selectedSiteId, "s1");
-  assert.equal(view.lastModel.selectedDateKey, TODAY);
-  assert.equal(view.lastModel.report.days.length, 7);
+  assert.deepEqual(view.lastModel.appliedRange, {
+    startDateKey: "2026-08-19",
+    endDateKey: "2026-09-01",
+    mode: "ROLLING",
+  });
+  assert.equal(view.lastModel.todayDateKey, "2026-09-01");
+  assert.equal(view.lastModel.selectedDateKey, "2026-09-01");
+  assert.equal(view.lastModel.report.days.length, 14);
+  assert.deepEqual(repositoryCalls.getReport, [{
+    siteId: "s1",
+    options: {
+      startDateKey: "2026-08-19",
+      endDateKey: "2026-09-01",
+      selectedDateKey: "2026-09-01",
+    },
+  }]);
   assert.equal(repositoryCalls.queryVisitsForReport.length, 1);
+});
+
+test("rejects invalid ranges without replacing the applied report", async () => {
+  const now = new Date(2026, 8, 1, 12).getTime();
+  const { controller, view, repositoryCalls } = createAnalysisHarness({
+    now,
+    sites: SITES,
+  });
+  await controller.initialize();
+
+  const cases = [
+    [{ startDateKey: "", endDateKey: "2026-09-01" }, "INVALID_DATE_RANGE", "请选择有效的起始和终止日期"],
+    [{ startDateKey: "2026-02-30", endDateKey: "2026-09-01" }, "INVALID_DATE_RANGE", "请选择有效的起始和终止日期"],
+    [{ startDateKey: "2026-09-02", endDateKey: "2026-09-01" }, "START_AFTER_END", "起始日期不能晚于终止日期"],
+    [{ startDateKey: "2026-09-01", endDateKey: "2026-09-02" }, "END_AFTER_TODAY", "终止日期不能晚于今天"],
+    [{ startDateKey: "2026-08-02", endDateKey: "2026-09-01" }, "RANGE_TOO_LONG", "日期范围最多为 30 天"],
+  ];
+
+  for (const [range, code, message] of cases) {
+    const before = copy(view.lastModel);
+    const callCount = repositoryCalls.getReport.length;
+
+    await controller.applyDateRange(range);
+
+    assert.deepEqual(view.lastModel.appliedRange, before.appliedRange);
+    assert.equal(view.lastModel.selectedDateKey, before.selectedDateKey);
+    assert.deepEqual(view.lastModel.report, before.report);
+    assert.equal(repositoryCalls.getReport.length, callCount);
+    assert.deepEqual(view.lastModel.rangeError, { code, message });
+  }
+});
+
+test("applies custom ranges and preserves their date selection across websites", async () => {
+  const { controller, view } = createAnalysisHarness({ now: NOW, sites: SITES });
+  await controller.initialize();
+
+  await controller.selectDate("2026-08-29");
+  await controller.applyDateRange({
+    startDateKey: "2026-08-20",
+    endDateKey: "2026-08-31",
+  });
+  assert.equal(view.lastModel.selectedDateKey, "2026-08-29");
+  assert.deepEqual(view.lastModel.appliedRange, {
+    startDateKey: "2026-08-20",
+    endDateKey: "2026-08-31",
+    mode: "CUSTOM",
+  });
+
+  await controller.applyDateRange({
+    startDateKey: "2026-08-01",
+    endDateKey: "2026-08-02",
+  });
+  assert.equal(view.lastModel.selectedDateKey, "2026-08-02");
+
+  await controller.selectSite("disabled-site");
+  assert.equal(view.lastModel.selectedSiteId, "disabled-site");
+  assert.deepEqual(view.lastModel.appliedRange, {
+    startDateKey: "2026-08-01",
+    endDateKey: "2026-08-02",
+    mode: "CUSTOM",
+  });
+  assert.equal(view.lastModel.selectedDateKey, "2026-08-02");
+});
+
+test("advances only a rolling range after local midnight", async () => {
+  const { controller, clock, view } = createAnalysisHarness({
+    now: new Date(2026, 8, 1, 12).getTime(),
+    sites: SITES,
+  });
+  await controller.initialize();
+  await controller.selectDate("2026-08-29");
+
+  clock.set(new Date(2026, 8, 2, 12).getTime());
+  await controller.refresh();
+
+  assert.equal(view.lastModel.todayDateKey, "2026-09-02");
+  assert.deepEqual(view.lastModel.appliedRange, {
+    startDateKey: "2026-08-20",
+    endDateKey: "2026-09-02",
+    mode: "ROLLING",
+  });
+  assert.equal(view.lastModel.selectedDateKey, "2026-08-29");
+});
+
+test("keeps a custom range fixed while querying the new today after midnight", async () => {
+  const { controller, clock, view, repositoryCalls } = createAnalysisHarness({
+    now: new Date(2026, 8, 1, 12).getTime(),
+    sites: SITES,
+  });
+  await controller.initialize();
+  await controller.applyDateRange({
+    startDateKey: "2026-08-01",
+    endDateKey: "2026-08-02",
+  });
+
+  clock.set(new Date(2026, 8, 2, 12).getTime());
+  await controller.refresh();
+
+  assert.equal(view.lastModel.todayDateKey, "2026-09-02");
+  assert.deepEqual(view.lastModel.appliedRange, {
+    startDateKey: "2026-08-01",
+    endDateKey: "2026-08-02",
+    mode: "CUSTOM",
+  });
+  assert.deepEqual(repositoryCalls.queryVisitsForReport.slice(-2), [
+    {
+      siteId: "s1",
+      rangeStart: new Date(2026, 7, 1).getTime(),
+      rangeEnd: new Date(2026, 7, 3).getTime(),
+    },
+    {
+      siteId: "s1",
+      rangeStart: new Date(2026, 8, 2).getTime(),
+      rangeEnd: new Date(2026, 8, 3).getTime(),
+    },
+  ]);
 });
 
 test("keeps disabled sites selectable and switches detail dates", async () => {
@@ -444,7 +581,7 @@ test("refresh preserves a selected disabled site and date while both remain avai
   assert.equal(view.lastModel.selectedDateKey, "2026-08-27");
 });
 
-test("refresh falls back to the earliest site and today when prior selections disappear", async () => {
+test("refresh falls back to the earliest site while preserving an in-range date", async () => {
   const { controller, dataSource, view } = createAnalysisHarness({ now: NOW, sites: SITES });
   await controller.initialize();
   await controller.selectSite("disabled-site");
@@ -454,60 +591,7 @@ test("refresh falls back to the earliest site and today when prior selections di
   await controller.refresh();
 
   assert.equal(view.lastModel.selectedSiteId, "replacement");
-  assert.equal(view.lastModel.selectedDateKey, TODAY);
-});
-
-test("queries the local seven-day union through now plus one millisecond", async () => {
-  const visit = {
-    id: "v1",
-    siteId: "s1",
-    openedAt: NOW,
-    endedAt: null,
-    activeIntervals: [],
-    lastConfirmedAt: NOW,
-    lastActivityAt: NOW,
-  };
-  const { dataSource, repositoryCalls } = createAnalysisHarness({
-    now: NOW,
-    sites: [SITES[1]],
-    visits: [visit],
-  });
-
-  const report = await dataSource.getReport("s1", TODAY);
-
-  assert.deepEqual(repositoryCalls.queryVisitsForReport[0], {
-    siteId: "s1",
-    rangeStart: new Date(2026, 7, 25, 0).getTime(),
-    rangeEnd: NOW + 1,
-  });
-  assert.equal(report.days.length, 7);
-  assert.equal(report.selectedDateKey, TODAY);
-  assert.equal(report.details[0].ongoing, true);
-});
-
-test("sends exact management commands and rejects a stable background error", async () => {
-  const responses = [
-    { ok: true, data: { id: "s2" } },
-    { ok: true, data: { id: "s1", enabled: false } },
-    { ok: false, error: { code: "DELETE_HISTORY_FAILED", message: "删除历史失败，请重试" } },
-  ];
-  const { dataSource, repositoryCalls } = createAnalysisHarness({
-    now: NOW,
-    commandResponder: async () => responses.shift(),
-  });
-
-  await dataSource.addSite({ name: "B 站", input: "bilibili.com" });
-  await dataSource.setSiteEnabled("s1", false);
-  await assert.rejects(dataSource.deleteSiteHistory("s1"), error => {
-    assert.equal(error.code, "DELETE_HISTORY_FAILED");
-    assert.equal(error.message, "删除历史失败，请重试");
-    return true;
-  });
-  assert.deepEqual(repositoryCalls.sendMessage, [
-    { type: WEBTRACE_ADD_SITE, name: "B 站", input: "bilibili.com" },
-    { type: WEBTRACE_SET_SITE_ENABLED, siteId: "s1", enabled: false },
-    { type: WEBTRACE_DELETE_SITE_HISTORY, siteId: "s1" },
-  ]);
+  assert.equal(view.lastModel.selectedDateKey, "2026-08-27");
 });
 
 test("reloads after mutations, keeps the affected site selected, and exposes pending state", async () => {

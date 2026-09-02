@@ -2,6 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createWebTraceHarness } from "./helpers/webtrace-harness.js";
 
+function reportTotals(report) {
+  return report.days.reduce(
+    (totals, day) => ({
+      openCount: totals.openCount + day.openCount,
+      activeMs: totals.activeMs + day.activeMs,
+    }),
+    { openCount: 0, activeMs: 0 },
+  );
+}
+
 test("proves the complete WebTrace V1 visit lifecycle through real production boundaries", async t => {
   const startedAt = new Date(2026, 7, 30, 23, 59, 40).getTime();
   const harness = await createWebTraceHarness({ now: startedAt });
@@ -38,8 +48,8 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   await harness.confirm(1);
   harness.advanceTo(startedAt + 8_000);
   await harness.confirm(1);
-  let report = await harness.getReport(site.id, "2026-08-30");
-  assert.deepEqual(report.totals, { openCount: 1, activeMs: 8_000 });
+  let report = await harness.getReport(site.id, { selectedDateKey: "2026-08-30" });
+  assert.deepEqual(reportTotals(report), { openCount: 1, activeMs: 8_000 });
   visits = await harness.getVisits(site.id);
   assert.deepEqual(visits[0].activeIntervals, [
     { startedAt, endedAt: null },
@@ -51,7 +61,9 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   visits = await harness.getVisits(site.id);
   assert.equal(visits.length, 1);
   assert.equal(visits[0].id, firstVisitId);
-  assert.equal((await harness.getReport(site.id, "2026-08-30")).totals.openCount, 1);
+  assert.equal(reportTotals(
+    await harness.getReport(site.id, { selectedDateKey: "2026-08-30" }),
+  ).openCount, 1);
 
   // 5. A same-site child tab inherits instead of opening a second visit.
   await harness.createTab({
@@ -88,7 +100,7 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   await harness.confirm(1);
   harness.advanceTo(startedAt + 26_000);
   await harness.confirm(1);
-  report = await harness.getReport(site.id, "2026-08-30");
+  report = await harness.getReport(site.id, { selectedDateKey: "2026-08-30" });
   const openingDay = report.days.find(day => day.dateKey === "2026-08-30");
   const nextDay = report.days.find(day => day.dateKey === "2026-08-31");
   assert.deepEqual(openingDay, {
@@ -101,11 +113,11 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
     openCount: 0,
     activeMs: 6_000,
   });
-  assert.deepEqual(report.totals, { openCount: 1, activeMs: 26_000 });
+  assert.deepEqual(reportTotals(report), { openCount: 1, activeMs: 26_000 });
   assert.equal(report.details.length, 1);
   assert.equal(report.details[0].durationMs, 26_000);
   assert.deepEqual(
-    (await harness.getReport(site.id, "2026-08-31")).details,
+    (await harness.getReport(site.id, { selectedDateKey: "2026-08-31" })).details,
     [],
   );
 
@@ -134,7 +146,7 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   assert.equal(visits[1].id, secondVisitId);
   assert.equal(visits[1].endedAt, startedAt + 26_000);
   assert.deepEqual(
-    (await harness.getReport(site.id, "2026-08-31")).totals,
+    reportTotals(await harness.getReport(site.id, { selectedDateKey: "2026-08-31" })),
     { openCount: 2, activeMs: 26_000 },
   );
 
@@ -151,11 +163,11 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   assert.equal(visits[2].endedAt, null);
   const deletedVisitIds = visits.map(visit => visit.id);
 
-  // 13. Deletion zeroes seven days, preserves enabled config, and refresh stays empty.
+  // 13. Deletion zeroes the default range, preserves enabled config, and refresh stays empty.
   await harness.deleteHistory(site.id);
-  report = await harness.getReport(site.id, "2026-08-31");
-  assert.deepEqual(report.totals, { openCount: 0, activeMs: 0 });
-  assert.equal(report.days.length, 7);
+  report = await harness.getReport(site.id, { selectedDateKey: "2026-08-31" });
+  assert.deepEqual(reportTotals(report), { openCount: 0, activeMs: 0 });
+  assert.equal(report.days.length, 14);
   assert.ok(report.days.every(day => day.openCount === 0 && day.activeMs === 0));
   assert.deepEqual(report.details, []);
   assert.equal(
@@ -175,7 +187,7 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   assert.equal(visits[0].endedAt, null);
   assert.equal(deletedVisitIds.includes(visits[0].id), false);
   assert.deepEqual(
-    (await harness.getReport(site.id, "2026-08-31")).totals,
+    reportTotals(await harness.getReport(site.id, { selectedDateKey: "2026-08-31" })),
     { openCount: 1, activeMs: 0 },
   );
   assert.equal((await harness.listSites())[0].enabled, true);
