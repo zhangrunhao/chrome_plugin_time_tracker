@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   WEBTRACE_ADD_SITE,
   WEBTRACE_DELETE_SITE_HISTORY,
+  WEBTRACE_REORDER_SITES,
 } from "../src/shared/protocol.js";
 import { createAnalysisDataSource } from "../src/analysis/data-source.js";
 import { createAnalysisController } from "../src/analysis/controller.js";
@@ -127,6 +128,11 @@ function createAnalysisHarness({
         data: copy(storedSites.find(site => site.id === message.siteId)),
       };
     }
+    if (message.type === WEBTRACE_REORDER_SITES) {
+      const sitesById = new Map(storedSites.map(site => [site.id, site]));
+      storedSites = message.siteIds.map(siteId => sitesById.get(siteId));
+      return { ok: true, data: copy(storedSites) };
+    }
     throw new Error(`Unexpected command: ${message.type}`);
   };
 
@@ -180,20 +186,21 @@ function createAnalysisHarness({
 const NOW = new Date(2026, 7, 31, 12).getTime();
 const TODAY = "2026-08-31";
 const SITES = [
-  { id: "disabled-site", name: "B 站", domain: "bilibili.com", enabled: false, createdAt: 2 },
   { id: "s1", name: "知乎", domain: "zhihu.com", enabled: true, createdAt: 1 },
+  { id: "disabled-site", name: "B 站", domain: "bilibili.com", enabled: false, createdAt: 2 },
 ];
 
-test("selects the earliest-created site and initializes a rolling fourteen-day range", async () => {
+test("selects the first saved site and preserves its configured order", async () => {
   const now = new Date(2026, 8, 1, 12).getTime();
   const { controller, view, repositoryCalls } = createAnalysisHarness({
     now,
-    sites: SITES,
+    sites: [SITES[1], SITES[0]],
   });
 
   await controller.initialize();
 
-  assert.equal(view.lastModel.selectedSiteId, "s1");
+  assert.deepEqual(view.lastModel.sites.map(site => site.id), ["disabled-site", "s1"]);
+  assert.equal(view.lastModel.selectedSiteId, "disabled-site");
   assert.equal("applyDateRange" in controller, false);
   assert.equal(view.lastModel.appliedRange, undefined);
   assert.equal(view.lastModel.rangeError, undefined);
@@ -201,7 +208,7 @@ test("selects the earliest-created site and initializes a rolling fourteen-day r
   assert.equal(view.lastModel.selectedDateKey, "2026-09-01");
   assert.equal(view.lastModel.report.days.length, 14);
   assert.deepEqual(repositoryCalls.getReport, [{
-    siteId: "s1",
+    siteId: "disabled-site",
     options: {
       startDateKey: "2026-08-19",
       endDateKey: "2026-09-01",
@@ -317,8 +324,8 @@ test("refresh preserves a selected disabled site and date while both remain avai
   await controller.selectSite("disabled-site");
   await controller.selectDate("2026-08-27");
   dataSource.sites = [
-    { ...SITES[1], name: "知乎社区" },
-    { ...SITES[0], name: "哔哩哔哩" },
+    { ...SITES[0], name: "知乎社区" },
+    { ...SITES[1], name: "哔哩哔哩" },
   ];
 
   await controller.refresh();
@@ -327,12 +334,12 @@ test("refresh preserves a selected disabled site and date while both remain avai
   assert.equal(view.lastModel.selectedDateKey, "2026-08-27");
 });
 
-test("refresh falls back to the earliest site while preserving an in-range date", async () => {
+test("refresh falls back to the first saved site while preserving an in-range date", async () => {
   const { controller, dataSource, view } = createAnalysisHarness({ now: NOW, sites: SITES });
   await controller.initialize();
   await controller.selectSite("disabled-site");
   await controller.selectDate("2026-08-27");
-  dataSource.sites = [{ ...SITES[1], id: "replacement", createdAt: 5 }];
+  dataSource.sites = [{ ...SITES[0], id: "replacement", createdAt: 5 }];
 
   await controller.refresh();
 
@@ -343,7 +350,7 @@ test("refresh falls back to the earliest site while preserving an in-range date"
 test("reloads after adding a site, selects it, and exposes pending state", async () => {
   const { controller, view, repositoryCalls } = createAnalysisHarness({
     now: NOW,
-    sites: [SITES[1]],
+    sites: [SITES[0]],
   });
   await controller.initialize();
 
@@ -357,10 +364,60 @@ test("reloads after adding a site, selects it, and exposes pending state", async
   assert.equal("setSiteEnabled" in controller, false);
 });
 
+test("optimistically reorders sites, persists all ids, and keeps the selected site", async () => {
+  const { controller, view, repositoryCalls } = createAnalysisHarness({
+    now: NOW,
+    sites: SITES,
+  });
+  await controller.initialize();
+
+  await controller.reorderSites(["disabled-site", "s1"]);
+
+  assert.deepEqual(view.lastModel.sites.map(site => site.id), ["disabled-site", "s1"]);
+  assert.equal(view.lastModel.selectedSiteId, "s1");
+  assert.ok(view.models.some(model => (
+    model.pending === true
+    && model.sites.map(site => site.id).join(",") === "disabled-site,s1"
+  )));
+  assert.deepEqual(repositoryCalls.sendMessage, [{
+    type: WEBTRACE_REORDER_SITES,
+    siteIds: ["disabled-site", "s1"],
+  }]);
+});
+
+test("reloads the saved order when a reorder command is rejected", async () => {
+  const harness = createAnalysisHarness({
+    now: NOW,
+    sites: SITES,
+    commandResponder: async () => ({
+      ok: false,
+      error: {
+        code: "INVALID_SITE_ORDER",
+        message: "网站列表已变化，请重试排序",
+      },
+    }),
+  });
+  await harness.controller.initialize();
+  harness.dataSource.sites = [
+    { ...SITES[0], name: "知乎社区" },
+    SITES[1],
+  ];
+
+  const result = await harness.controller.reorderSites(["disabled-site", "s1"]);
+
+  assert.equal(result, null);
+  assert.deepEqual(harness.view.lastModel.sites.map(site => site.id), ["s1", "disabled-site"]);
+  assert.equal(harness.view.lastModel.sites[0].name, "知乎社区");
+  assert.deepEqual(harness.view.lastModel.error, {
+    code: "INVALID_SITE_ORDER",
+    message: "网站列表已变化，请重试排序",
+  });
+});
+
 test("requests and cancels deletion without mutation, then deletes only after explicit confirmation", async () => {
   const { controller, view, repositoryCalls } = createAnalysisHarness({
     now: NOW,
-    sites: [SITES[1]],
+    sites: [SITES[0]],
   });
   await controller.initialize();
 
@@ -414,12 +471,12 @@ test("coalesces a refresh requested during an in-flight refresh without overlap"
   const initialRefresh = controller.refresh();
   const pendingRefresh = controller.refresh();
   assert.equal(listCalls, 1);
-  first.resolve([SITES[1]]);
+  first.resolve([SITES[0]]);
   for (let index = 0; index < 10 && listCalls < 2; index += 1) {
     await Promise.resolve();
   }
   assert.equal(listCalls, 2);
-  second.resolve([SITES[1]]);
+  second.resolve([SITES[0]]);
   await Promise.all([initialRefresh, pendingRefresh]);
 
   assert.equal(maximumActive, 1);
@@ -592,7 +649,7 @@ test("serializes rapid site selections so a stale report cannot replace the late
 test("refreshes every four seconds only while visible and refreshes on return", async () => {
   const { controller, scheduler, visibility, repositoryCalls } = createAnalysisHarness({
     now: NOW,
-    sites: [SITES[1]],
+    sites: [SITES[0]],
   });
   await controller.initialize();
   const stop = controller.startAutoRefresh();

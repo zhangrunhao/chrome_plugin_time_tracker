@@ -76,6 +76,24 @@ export function createSiteService({ siteRepository, tracker, clock, idFactory })
       });
     },
 
+    reorderSites({ siteIds }) {
+      return enqueue(async () => {
+        const sites = await siteRepository.list();
+        const sitesById = new Map(sites.map(site => [site.id, site]));
+        if (
+          !Array.isArray(siteIds)
+          || siteIds.length !== sites.length
+          || new Set(siteIds).size !== sites.length
+          || siteIds.some(siteId => !sitesById.has(siteId))
+        ) {
+          throw serviceError("INVALID_SITE_ORDER");
+        }
+        const nextSites = siteIds.map(siteId => sitesById.get(siteId));
+        await siteRepository.replace(copy(nextSites));
+        return copy(nextSites);
+      });
+    },
+
     migrateDisabledSites() {
       return enqueue(async () => {
         const sites = await siteRepository.list();

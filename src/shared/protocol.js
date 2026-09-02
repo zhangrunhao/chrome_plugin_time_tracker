@@ -1,6 +1,7 @@
 export const WEBTRACE_PAGE_VISIBILITY = "WEBTRACE_PAGE_VISIBILITY";
 export const WEBTRACE_ANALYSIS_READY = "WEBTRACE_ANALYSIS_READY";
 export const WEBTRACE_ADD_SITE = "WEBTRACE_ADD_SITE";
+export const WEBTRACE_REORDER_SITES = "WEBTRACE_REORDER_SITES";
 export const WEBTRACE_DELETE_SITE_HISTORY = "WEBTRACE_DELETE_SITE_HISTORY";
 
 export const SITE_ERROR_MESSAGES = Object.freeze({
@@ -10,6 +11,7 @@ export const SITE_ERROR_MESSAGES = Object.freeze({
   UNREGISTRABLE_DOMAIN: "请输入可注册的主域名",
   DUPLICATE_SITE: "该网站已经添加",
   SITE_NOT_FOUND: "找不到该网站配置",
+  INVALID_SITE_ORDER: "网站列表已变化，请重试排序",
   SITE_STATE_SYNC_FAILED: "网站配置已保存，但采集状态同步失败，请重试",
   DELETE_HISTORY_FAILED: "删除历史失败，请重试",
 });

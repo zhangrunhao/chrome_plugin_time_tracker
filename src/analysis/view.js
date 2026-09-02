@@ -1,3 +1,5 @@
+import { attachLongPressSiteReorder } from "./site-reorder.js";
+
 function element(document, tagName, { className = "", text = null } = {}) {
   const node = document.createElement(tagName);
   node.className = className;
@@ -71,7 +73,22 @@ function appendSummaryCard(document, container, label, value) {
   container.append(card);
 }
 
-export function createAnalysisView({ document = globalThis.document } = {}) {
+function siteListKey(model) {
+  return JSON.stringify({
+    sites: model.sites.map(site => ({
+      id: site.id,
+      name: site.name,
+      domain: site.domain,
+    })),
+    selectedSiteId: model.selectedSiteId,
+    pending: model.pending,
+  });
+}
+
+export function createAnalysisView({
+  document = globalThis.document,
+  scheduler = globalThis,
+} = {}) {
   if (document === null || typeof document?.createElement !== "function") {
     throw new TypeError("A document is required");
   }
@@ -87,6 +104,9 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     errorBanner: requiredRegion(document, "error-banner"),
   };
   let controller = null;
+  let siteRenderKey = null;
+  let siteButtons = new Map();
+  let siteReordering = null;
   let managerRenderKey = null;
   let dialogError = null;
 
@@ -151,6 +171,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     const heading = element(document, "h2", { text: "统计网站" });
     const items = element(document, "div", { className: "site-options" });
     const buttons = new Map();
+    let reordering = null;
     if (model.sites.length === 0) {
       items.append(element(document, "p", {
         className: "empty-copy",
@@ -163,17 +184,31 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       button.type = "button";
       button.dataset.siteId = site.id;
       button.disabled = model.pending;
+      button.setAttribute("aria-description", "鼠标长按网站，或触摸右侧把手，可调整顺序");
       button.setAttribute("aria-pressed", String(site.id === model.selectedSiteId));
-      button.addEventListener("click", () => controller?.selectSite(site.id));
+      button.addEventListener("click", () => {
+        if (!reordering?.consumeClick(site.id)) {
+          controller?.selectSite(site.id);
+        }
+      });
       buttons.set(site.id, button);
+      const dragHandle = element(document, "span", { className: "site-drag-handle" });
+      dragHandle.dataset.dragHandle = "true";
+      dragHandle.setAttribute("aria-hidden", "true");
       button.append(
         element(document, "strong", { className: "site-name", text: site.name }),
         element(document, "span", { className: "site-domain", text: site.domain }),
+        dragHandle,
       );
       items.append(button);
     }
+    reordering = attachLongPressSiteReorder({
+      container: items,
+      scheduler,
+      onReorder: siteIds => controller?.reorderSites(siteIds),
+    });
     regions.siteList.replaceChildren(heading, items);
-    return buttons;
+    return { buttons, reordering };
   }
 
   function renderSummary(model) {
@@ -446,7 +481,14 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     render(model) {
       const focusToken = captureFocusToken();
       regions.manageSites.disabled = model.pending;
-      const siteButtons = renderSites(model);
+      const nextSiteRenderKey = siteListKey(model);
+      if (nextSiteRenderKey !== siteRenderKey) {
+        siteReordering?.cancel?.();
+        const renderedSites = renderSites(model);
+        siteButtons = renderedSites.buttons;
+        siteReordering = renderedSites.reordering;
+        siteRenderKey = nextSiteRenderKey;
+      }
       renderSummary(model);
       const openChartButtons = renderChart(regions.openChart, model, {
         title: "每日打开次数",

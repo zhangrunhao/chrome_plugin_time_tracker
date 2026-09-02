@@ -6,6 +6,7 @@ import { aggregateReport } from "../domain/report.js";
 import {
   WEBTRACE_ADD_SITE,
   WEBTRACE_DELETE_SITE_HISTORY,
+  WEBTRACE_REORDER_SITES,
 } from "../shared/protocol.js";
 
 const FALLBACK_ERROR = Object.freeze({
@@ -101,6 +102,10 @@ export function createAnalysisDataSource({
 
     addSite({ name, input }) {
       return sendCommand({ type: WEBTRACE_ADD_SITE, name, input });
+    },
+
+    reorderSites(siteIds) {
+      return sendCommand({ type: WEBTRACE_REORDER_SITES, siteIds });
     },
 
     deleteSiteHistory(siteId) {

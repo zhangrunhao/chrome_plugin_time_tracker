@@ -10,6 +10,7 @@ import {
   SITE_ERROR_MESSAGES,
   WEBTRACE_ADD_SITE,
   WEBTRACE_DELETE_SITE_HISTORY,
+  WEBTRACE_REORDER_SITES,
 } from "../src/shared/protocol.js";
 import { createTrackingRepository } from "../src/storage/tracking-repository.js";
 import { openWebTraceDb } from "../src/storage/webtrace-db.js";
@@ -197,12 +198,17 @@ function createChromeHarness({
   const siteService = injectedSiteService ?? {
     addSiteCalls: [],
     deleteSiteHistoryCalls: [],
+    reorderSitesCalls: [],
     async addSite(input) {
       this.addSiteCalls.push(structuredClone(input));
       return { id: "site-1", ...structuredClone(input) };
     },
     async deleteSiteHistory(input) {
       this.deleteSiteHistoryCalls.push(structuredClone(input));
+      return structuredClone(input);
+    },
+    async reorderSites(input) {
+      this.reorderSitesCalls.push(structuredClone(input));
       return structuredClone(input);
     },
   };
@@ -245,6 +251,14 @@ test("registers every Chrome listener synchronously", () => {
   assert.equal(harness.events.idleOnStateChanged.listenerCount, 1);
   assert.equal(harness.events.runtimeOnMessage.listenerCount, 1);
   assert.equal(harness.events.actionOnClicked.listenerCount, 1);
+});
+
+test("requires a complete site command service before registering listeners", () => {
+  const harness = createChromeHarness();
+  delete harness.siteService.reorderSites;
+
+  assert.throws(() => registerChromeEvents(harness), /site service/i);
+  assert.equal(harness.events.runtimeOnMessage.listenerCount, 0);
 });
 
 test("forwards filtered browser events with only injected-clock timestamps", async () => {
@@ -410,6 +424,32 @@ test("handles each trusted analysis command with one successful response envelop
     );
     assert.deepEqual(responses, [{ ok: true, data: command.expectedData }]);
   }
+});
+
+test("forwards a trusted complete site order to the site service", async () => {
+  const harness = createChromeHarness();
+  registerChromeEvents(harness);
+  const responses = [];
+  const responseReady = deferred();
+
+  const [listenerReturn] = await harness.events.runtimeOnMessage.emit(
+    { type: WEBTRACE_REORDER_SITES, siteIds: ["site-2", "site-1"] },
+    { url: "chrome-extension://test/analysis.html" },
+    response => {
+      responses.push(structuredClone(response));
+      responseReady.resolve();
+    },
+  );
+
+  assert.equal(listenerReturn, true);
+  await responseReady.promise;
+  assert.deepEqual(harness.siteService.reorderSitesCalls, [{
+    siteIds: ["site-2", "site-1"],
+  }]);
+  assert.deepEqual(responses, [{
+    ok: true,
+    data: { siteIds: ["site-2", "site-1"] },
+  }]);
 });
 
 test("reserves a site command before later lifecycle events until persistence and sync finish", async () => {
@@ -582,6 +622,7 @@ test("returns one stable error envelope and reports only code and stack", async 
       throw failure;
     },
     async deleteSiteHistory() {},
+    async reorderSites() {},
   };
   const harness = createChromeHarness({ siteService });
   registerChromeEvents(harness);

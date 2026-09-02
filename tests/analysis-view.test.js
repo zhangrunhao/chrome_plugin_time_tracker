@@ -51,9 +51,35 @@ class FakeElement {
 
   append(...children) {
     for (const child of children) {
+      if (child.parentNode !== null) {
+        const previousIndex = child.parentNode.children.indexOf(child);
+        if (previousIndex !== -1) {
+          child.parentNode.children.splice(previousIndex, 1);
+        }
+      }
       child.parentNode = this;
       this.children.push(child);
     }
+  }
+
+  insertBefore(child, reference) {
+    if (reference === null) {
+      this.append(child);
+      return child;
+    }
+    if (child.parentNode !== null) {
+      const previousIndex = child.parentNode.children.indexOf(child);
+      if (previousIndex !== -1) {
+        child.parentNode.children.splice(previousIndex, 1);
+      }
+    }
+    const referenceIndex = this.children.indexOf(reference);
+    if (referenceIndex === -1) {
+      throw new Error("Reference element is not a child");
+    }
+    child.parentNode = this;
+    this.children.splice(referenceIndex, 0, child);
+    return child;
   }
 
   replaceChildren(...children) {
@@ -65,6 +91,9 @@ class FakeElement {
       )
     ) {
       this.ownerDocument.activeElement = null;
+    }
+    for (const child of this.children) {
+      child.parentNode = null;
     }
     this.children = [];
     this._textContent = "";
@@ -79,17 +108,25 @@ class FakeElement {
     return this.attributes.get(name) ?? null;
   }
 
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
   addEventListener(type, listener) {
     const listeners = this.listeners.get(type) ?? [];
     listeners.push(listener);
     this.listeners.set(type, listeners);
   }
 
-  async dispatch(type) {
+  async dispatch(type, init = {}) {
     const event = {
+      ...init,
       currentTarget: this,
-      target: this,
-      preventDefault() {},
+      target: init.target ?? this,
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
     };
     const results = (this.listeners.get(type) ?? []).map(listener => listener(event));
     await Promise.all(results.filter(result => result instanceof Promise));
@@ -120,6 +157,27 @@ class FakeElement {
       this.ownerDocument.activeElement = this;
     }
     this.lastFocusOptions = copy(options);
+  }
+
+  getBoundingClientRect() {
+    return this.boundingClientRect ?? {
+      top: 0,
+      right: 100,
+      bottom: 40,
+      left: 0,
+      width: 100,
+      height: 40,
+    };
+  }
+
+  setPointerCapture(pointerId) {
+    this.capturedPointerId = pointerId;
+  }
+
+  releasePointerCapture(pointerId) {
+    if (this.capturedPointerId === pointerId) {
+      this.capturedPointerId = null;
+    }
   }
 }
 
@@ -169,6 +227,28 @@ function createDocumentFake() {
   elements.get("manage-sites").tagName = "BUTTON";
   document.elements = elements;
   return document;
+}
+
+function createTimeoutScheduler() {
+  const tasks = [];
+  return {
+    tasks,
+    setTimeout(callback, delay) {
+      const task = { callback, delay, active: true };
+      tasks.push(task);
+      return task;
+    },
+    clearTimeout(task) {
+      task.active = false;
+    },
+    runNext() {
+      const task = tasks.find(candidate => candidate.active);
+      assert.ok(task, "expected a pending timeout");
+      task.active = false;
+      task.callback();
+      return task;
+    },
+  };
 }
 
 function dateKeys(startAt, count) {
@@ -296,6 +376,170 @@ test("renders aligned fourteen-day SVG lines with native button points", async (
   assert.ok(detailsText.indexOf("09:00:00") < detailsText.indexOf("08:00:00"));
   assert.match(detailsText, /进行中/);
   assert.match(detailsText, /02:02:01/);
+});
+
+test("long-press drag reorders site buttons once without selecting the dragged site", async () => {
+  const document = createDocumentFake();
+  const scheduler = createTimeoutScheduler();
+  const selectedSites = [];
+  const savedOrders = [];
+  const view = createAnalysisView({ document, scheduler });
+  bindNoopController(view, {
+    selectSite(siteId) {
+      selectedSites.push(siteId);
+    },
+    reorderSites(siteIds) {
+      savedOrders.push(copy(siteIds));
+    },
+  });
+  view.render(viewModel());
+  const siteList = document.elements.get("site-list");
+  const [first, second] = byDataset(siteList, "siteId");
+  first.boundingClientRect = {
+    top: 0, right: 200, bottom: 40, left: 0, width: 200, height: 40,
+  };
+  second.boundingClientRect = {
+    top: 50, right: 200, bottom: 90, left: 0, width: 200, height: 40,
+  };
+
+  await second.dispatch("pointerdown", {
+    pointerId: 7,
+    pointerType: "mouse",
+    button: 0,
+    isPrimary: true,
+    clientX: 20,
+    clientY: 70,
+  });
+  scheduler.runNext();
+  assert.equal(second.dataset.dragging, "true");
+
+  await second.dispatch("pointermove", {
+    pointerId: 7,
+    pointerType: "mouse",
+    clientX: 20,
+    clientY: 10,
+  });
+  assert.deepEqual(
+    byDataset(siteList, "siteId").map(button => button.dataset.siteId),
+    ["site-1", "site-2"],
+  );
+
+  await second.dispatch("pointerup", { pointerId: 7, pointerType: "mouse" });
+  assert.deepEqual(savedOrders, [["site-1", "site-2"]]);
+  assert.equal(second.dataset.dragging, undefined);
+  assert.equal(second.capturedPointerId, null);
+
+  await second.click();
+  assert.deepEqual(selectedSites, []);
+  await second.click();
+  assert.deepEqual(selectedSites, ["site-1"]);
+});
+
+test("keeps touch scrolling on the site body and reorders horizontally from its handle", async () => {
+  const css = await readFile(new URL("../analysis.css", import.meta.url), "utf8");
+  const siteOptionRule = css.match(/\.site-option\s*\{([^}]*)\}/)?.[1] ?? "";
+  const handleRule = css.match(/\.site-drag-handle\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.doesNotMatch(siteOptionRule, /touch-action\s*:\s*none/);
+  assert.match(handleRule, /touch-action\s*:\s*none/);
+
+  const document = createDocumentFake();
+  const scheduler = createTimeoutScheduler();
+  const savedOrders = [];
+  const view = createAnalysisView({ document, scheduler });
+  bindNoopController(view, {
+    reorderSites(siteIds) {
+      savedOrders.push(copy(siteIds));
+    },
+  });
+  view.render(viewModel());
+  const siteList = document.elements.get("site-list");
+  const [first, second] = byDataset(siteList, "siteId");
+  first.boundingClientRect = {
+    top: 0, right: 200, bottom: 40, left: 0, width: 200, height: 40,
+  };
+  second.boundingClientRect = {
+    top: 0, right: 410, bottom: 40, left: 210, width: 200, height: 40,
+  };
+
+  await second.dispatch("pointerdown", {
+    pointerId: 9,
+    pointerType: "touch",
+    target: second,
+    button: 0,
+    isPrimary: true,
+  });
+  assert.equal(scheduler.tasks.filter(task => task.active).length, 0);
+  assert.equal(second.capturedPointerId, undefined);
+
+  const [handle] = byDataset(second, "dragHandle", "true");
+  assert.ok(handle);
+  await second.dispatch("pointerdown", {
+    pointerId: 10,
+    pointerType: "touch",
+    target: handle,
+    button: 0,
+    isPrimary: true,
+  });
+  assert.equal(scheduler.tasks.filter(task => task.active).length, 1);
+  scheduler.runNext();
+  await second.dispatch("pointermove", {
+    pointerId: 10,
+    pointerType: "touch",
+    target: handle,
+    clientX: 10,
+    clientY: 20,
+  });
+  await second.dispatch("pointerup", {
+    pointerId: 10,
+    pointerType: "touch",
+    target: handle,
+  });
+
+  assert.deepEqual(savedOrders, [["site-1", "site-2"]]);
+});
+
+test("a cancelled long-press drag restores the visible order without saving", async () => {
+  const document = createDocumentFake();
+  const scheduler = createTimeoutScheduler();
+  const savedOrders = [];
+  const view = createAnalysisView({ document, scheduler });
+  bindNoopController(view, {
+    reorderSites(siteIds) {
+      savedOrders.push(copy(siteIds));
+    },
+  });
+  view.render(viewModel());
+  const siteList = document.elements.get("site-list");
+  const [first, second] = byDataset(siteList, "siteId");
+  first.boundingClientRect = {
+    top: 0, right: 200, bottom: 40, left: 0, width: 200, height: 40,
+  };
+  second.boundingClientRect = {
+    top: 50, right: 200, bottom: 90, left: 0, width: 200, height: 40,
+  };
+
+  await second.dispatch("pointerdown", {
+    pointerId: 8,
+    button: 0,
+    isPrimary: true,
+    clientX: 20,
+    clientY: 70,
+  });
+  scheduler.runNext();
+  await second.dispatch("pointermove", {
+    pointerId: 8,
+    clientX: 20,
+    clientY: 10,
+  });
+  await second.dispatch("pointercancel", { pointerId: 8 });
+
+  assert.deepEqual(
+    byDataset(siteList, "siteId").map(button => button.dataset.siteId),
+    ["site-2", "site-1"],
+  );
+  assert.deepEqual(savedOrders, []);
+  assert.equal(second.dataset.dragging, undefined);
+  assert.equal(second.capturedPointerId, null);
 });
 
 test("keeps every zero-value date on one SVG baseline", () => {
@@ -464,7 +708,7 @@ test("mirrors stable operation errors into an open manager alert", async () => {
   }
 });
 
-test("restores focus to replaced site and both chart points without scrolling", () => {
+test("keeps focused site controls stable across report refreshes and restores chart focus", () => {
   const document = createDocumentFake();
   const view = createAnalysisView({ document });
   bindNoopController(view);
@@ -475,9 +719,8 @@ test("restores focus to replaced site and both chart points without scrolling", 
   originalSite.focus();
   view.render(viewModel({ report: { todaySummary: { openCount: 3, activeMs: 3_000 } } }));
   const restoredSite = byDataset(document.elements.get("site-list"), "siteId", "site-1")[0];
-  assert.notEqual(restoredSite, originalSite);
+  assert.equal(restoredSite, originalSite);
   assert.equal(document.activeElement, restoredSite);
-  assert.deepEqual(restoredSite.lastFocusOptions, { preventScroll: true });
 
   for (const chartId of ["open-chart", "duration-chart"]) {
     const originalPoint = byDataset(document.elements.get(chartId), "dateKey")[3];

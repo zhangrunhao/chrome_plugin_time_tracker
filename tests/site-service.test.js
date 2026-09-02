@@ -191,6 +191,54 @@ test("migrates disabled sites once without changing identity or backfilling", as
   }]);
 });
 
+test("reorders saved sites without changing their configuration or tracker state", async () => {
+  const first = {
+    id: "site-1",
+    name: "知乎",
+    domain: "zhihu.com",
+    enabled: true,
+    createdAt: 100,
+  };
+  const second = {
+    id: "site-2",
+    name: "B 站",
+    domain: "bilibili.com",
+    enabled: true,
+    createdAt: 200,
+  };
+  const { service, repository, tracker } = createHarness({ sites: [first, second] });
+
+  const result = await service.reorderSites({ siteIds: [second.id, first.id] });
+
+  assert.deepEqual(result, [second, first]);
+  assert.deepEqual(repository.snapshot(), [second, first]);
+  assert.deepEqual(repository.replaceCalls, [[second, first]]);
+  assert.deepEqual(tracker.updateSitesCalls, []);
+});
+
+test("rejects a stale or malformed order without changing saved sites", async () => {
+  const sites = [
+    { id: "site-1", name: "知乎", domain: "zhihu.com", enabled: true, createdAt: 100 },
+    { id: "site-2", name: "B 站", domain: "bilibili.com", enabled: true, createdAt: 200 },
+  ];
+
+  for (const siteIds of [
+    ["site-1"],
+    ["site-1", "site-1"],
+    ["site-1", "missing"],
+    null,
+  ]) {
+    const { service, repository } = createHarness({ sites });
+
+    await expectServiceError(
+      service.reorderSites({ siteIds }),
+      "INVALID_SITE_ORDER",
+    );
+    assert.deepEqual(repository.snapshot(), sites);
+    assert.deepEqual(repository.replaceCalls, []);
+  }
+});
+
 test("keeps saved configuration authoritative and marks it dirty when tracker sync fails", async () => {
   const { service, repository, tracker } = createHarness({ updateSitesFailures: 1 });
 

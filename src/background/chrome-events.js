@@ -5,6 +5,7 @@ import {
   WEBTRACE_ANALYSIS_READY,
   WEBTRACE_DELETE_SITE_HISTORY,
   WEBTRACE_PAGE_VISIBILITY,
+  WEBTRACE_REORDER_SITES,
 } from "../shared/protocol.js";
 
 function ignoreRejection(promise) {
@@ -129,6 +130,10 @@ function siteCommandFor(message, siteService) {
       return () => siteService.deleteSiteHistory({
         siteId: message.siteId,
       });
+    case WEBTRACE_REORDER_SITES:
+      return () => siteService.reorderSites({
+        siteIds: message.siteIds,
+      });
     default:
       return null;
   }
@@ -144,7 +149,8 @@ export function registerChromeEvents({
 }) {
   if (
     typeof siteService?.addSite !== "function" ||
-    typeof siteService?.deleteSiteHistory !== "function"
+    typeof siteService?.deleteSiteHistory !== "function" ||
+    typeof siteService?.reorderSites !== "function"
   ) {
     throw new TypeError("A site service is required");
   }

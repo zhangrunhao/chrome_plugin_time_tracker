@@ -12,12 +12,6 @@ function copy(value) {
   return structuredClone(value);
 }
 
-function orderedSites(sites) {
-  return [...sites].sort((left, right) => (
-    left.createdAt - right.createdAt || left.id.localeCompare(right.id)
-  ));
-}
-
 function publicError(error) {
   const hasStableEnvelope = typeof error?.code === "string"
     && typeof error?.message === "string"
@@ -127,7 +121,7 @@ export function createAnalysisController({
   async function loadOnce(nextPreferredSiteId) {
     updateDateState();
     const previousSiteId = state.selectedSiteId;
-    const sites = orderedSites(await dataSource.listSites());
+    const sites = await dataSource.listSites();
     state.sites = sites;
 
     if (sites.length === 0) {
@@ -240,6 +234,28 @@ export function createAnalysisController({
 
     addSite(input) {
       return mutate(() => dataSource.addSite(input), null);
+    },
+
+    async reorderSites(siteIds) {
+      beginUserAction();
+      const previousSites = state.sites;
+      const sitesById = new Map(previousSites.map(site => [site.id, site]));
+      state.sites = siteIds.map(siteId => sitesById.get(siteId));
+      state.pending = true;
+      render();
+      try {
+        const result = await dataSource.reorderSites(siteIds);
+        await refresh({ selectSiteId: state.selectedSiteId });
+        return result;
+      } catch (error) {
+        state.sites = previousSites;
+        state.error = publicError(error);
+        await refresh({ selectSiteId: state.selectedSiteId });
+        return null;
+      } finally {
+        state.pending = false;
+        render();
+      }
     },
 
     requestDeleteHistory(siteId) {

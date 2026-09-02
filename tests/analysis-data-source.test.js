@@ -108,3 +108,17 @@ test("sends exact management commands and rejects a stable background error", as
   ]);
   assert.equal("setSiteEnabled" in harness.dataSource, false);
 });
+
+test("sends the complete ordered site id list to the background", async () => {
+  const harness = createDataSourceHarness({
+    now: new Date(2026, 8, 2, 12).getTime(),
+    responses: [{ ok: true, data: [] }],
+  });
+
+  await harness.dataSource.reorderSites(["s2", "s1"]);
+
+  assert.deepEqual(harness.sentMessages, [{
+    type: "WEBTRACE_REORDER_SITES",
+    siteIds: ["s2", "s1"],
+  }]);
+});

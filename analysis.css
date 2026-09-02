@@ -78,8 +78,9 @@ button:disabled {
 }
 
 .site-option {
+  position: relative;
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.2rem 0.75rem;
   width: 100%;
   padding: 0.9rem 1rem;
@@ -87,7 +88,8 @@ button:disabled {
   border-radius: 0.9rem;
   background: transparent;
   text-align: left;
-  cursor: pointer;
+  cursor: grab;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
 
 .site-option:hover {
@@ -100,19 +102,55 @@ button:disabled {
   box-shadow: inset 3px 0 var(--accent);
 }
 
-.site-name {
+.site-option[data-dragging="true"] {
+  z-index: 1;
+  border-color: #8eaa96;
+  background: #edf5ef;
+  box-shadow: 0 0.75rem 1.5rem rgba(32, 58, 40, 0.18);
+  cursor: grabbing;
+  transform: scale(1.02);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.site-option:disabled {
+  cursor: default;
+}
+
+.site-name,
+.site-domain {
+  grid-column: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .site-domain {
-  grid-column: 1 / -1;
-  overflow: hidden;
   color: var(--muted);
   font-size: 0.78rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.site-drag-handle {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 2.25rem;
+  height: 2.75rem;
+  margin: -0.55rem -0.5rem -0.55rem 0;
+  border-radius: 0.55rem;
+  background: radial-gradient(circle, currentColor 1.2px, transparent 1.4px) center / 0.45rem 0.45rem;
+  color: #738078;
+  cursor: grab;
+  opacity: 0.72;
+  touch-action: none;
+}
+
+.site-option[data-dragging="true"] .site-drag-handle {
+  cursor: grabbing;
+}
+
+.site-option:disabled .site-drag-handle {
+  cursor: default;
 }
 
 main {
