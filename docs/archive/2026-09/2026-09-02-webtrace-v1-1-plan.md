@@ -10,7 +10,9 @@
 
 **Spec:** [`2026-09-02-webtrace-v1-1-spec.md`](./2026-09-02-webtrace-v1-1-spec.md)
 
-**Status:** 实施中（2026-09-02 用户确认移除自定义日期范围）
+**Status:** 已完成
+
+**Completion Evidence:** 2026-09-02 发布验证为 132/132；用户在 Google Chrome `152.0.7977.65` 重新加载扩展后确认固定 14 日、无日期选择、今日概览、折线选择和按日期明细通过。Chrome 控制工具无法读取受限扩展页面，因此页面结果记录为用户手工验收，V1 核心行为继续由既有 Chrome 证据和当次自动回归覆盖。
 
 ## Global Constraints
 

@@ -1,7 +1,7 @@
 # WebTrace V1.1 分析页与持续统计规格
 
 - 日期：2026-09-02
-- 状态：实施中
+- 状态：已完成
 - 目标版本：`1.1.0`
 - 目标平台：Chrome Manifest V3 扩展
 
@@ -31,8 +31,8 @@ V1 已支持多网站本地统计、最近 7 天趋势和逐次访问明细。V1
 
 - [WebTrace（网迹）Notion 页面](https://app.notion.com/p/3ad387d074aa80119b91ed30fdecf7a4)
 - [网站时长统计 Notion 子页面](https://app.notion.com/p/3b2387d074aa803eabc6ed83aa960ab9)
-- [WebTrace V1 已完成规格](../archive/2026-08/2026-08-31-webtrace-v1-spec.md)
-- [当前项目事实与有效决定](../current/project.md)
+- [WebTrace V1 已完成规格](../2026-08/2026-08-31-webtrace-v1-spec.md)
+- [当前项目事实与有效决定](../../current/project.md)
 
 ### 3.2 2026-09-02 用户确认
 
