@@ -1,9 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  getRollingDateRange,
-  localDateKey,
-} from "../src/domain/local-date-range.js";
 import { createWebTraceHarness } from "./helpers/webtrace-harness.js";
 
 function reportTotals(report) {
@@ -161,26 +157,15 @@ test("proves the complete WebTrace V1.1 lifecycle through real production bounda
   assert.equal(visits[2].endedAt, null);
   const deletedVisitIds = visits.map(visit => visit.id);
 
-  // 12. Default and historical reports use 14/30-day ranges with an independent today summary.
+  // 12. The product report is fixed to the rolling fourteen local days.
   const reportNow = new Date(2026, 7, 31, 12).getTime();
   await harness.advanceTo(reportNow);
   const defaultReport = await harness.getReport(site.id);
   assert.equal(defaultReport.days.length, 14);
   assert.deepEqual(defaultReport.range, {
-    startDateKey: getRollingDateRange(reportNow).startDateKey,
-    endDateKey: localDateKey(reportNow),
+    startDateKey: "2026-08-18",
+    endDateKey: "2026-08-31",
   });
-  const historical = await harness.getReport(site.id, {
-    startDateKey: "2026-08-01",
-    endDateKey: "2026-08-30",
-    selectedDateKey: "2026-08-30",
-  });
-  assert.equal(historical.days.length, 30);
-  assert.deepEqual(historical.range, {
-    startDateKey: "2026-08-01",
-    endDateKey: "2026-08-30",
-  });
-  assert.deepEqual(historical.todaySummary, defaultReport.todaySummary);
 
   // 13. Deletion zeroes the default range, preserves enabled config, and refresh stays empty.
   await harness.deleteHistory(site.id);

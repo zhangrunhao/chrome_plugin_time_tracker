@@ -147,7 +147,6 @@ main {
 }
 
 .primary-button,
-.date-range-form button,
 #site-manager button {
   min-height: 2.65rem;
   border: 1px solid var(--ink);
@@ -220,48 +219,10 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
-#date-range {
-  margin-top: 1rem;
-}
-
-.date-range-hint,
 .manager-hint {
   margin: 0.45rem 0 0;
   color: var(--muted);
   font-size: 0.82rem;
-}
-
-.date-range-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(10rem, 1fr)) auto;
-  align-items: end;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-.date-range-form label {
-  display: grid;
-  gap: 0.35rem;
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
-.date-range-form input {
-  width: 100%;
-  min-height: 2.65rem;
-  border: 1px solid #bdc8bf;
-  border-radius: 0.6rem;
-  padding: 0.55rem 0.7rem;
-  background: white;
-  color: var(--ink);
-}
-
-.date-range-error {
-  margin: 0.75rem 0 0;
-  color: #722821;
-  font-size: 0.82rem;
-  font-weight: 700;
 }
 
 .trend-stack {
@@ -604,8 +565,7 @@ main {
     padding: 1.5rem 1rem 3rem;
   }
 
-  .summary-grid,
-  .date-range-form {
+  .summary-grid {
     grid-template-columns: 1fr;
   }
 

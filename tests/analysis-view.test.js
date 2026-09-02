@@ -143,7 +143,6 @@ function createDocumentFake() {
     "site-list",
     "manage-sites",
     "summary",
-    "date-range",
     "open-chart",
     "duration-chart",
     "visit-details",
@@ -214,15 +213,9 @@ function viewModel(overrides = {}) {
     sites: copy(SITES),
     selectedSiteId: "site-1",
     todayDateKey: TODAY,
-    appliedRange: {
-      startDateKey: report.range.startDateKey,
-      endDateKey: report.range.endDateKey,
-      mode: "ROLLING",
-    },
     selectedDateKey: overrides.selectedDateKey ?? TODAY,
     report,
     error: null,
-    rangeError: null,
     pending: false,
     deleteConfirmationSiteId: null,
     ...overrides.model,
@@ -233,7 +226,6 @@ function bindNoopController(view, overrides = {}) {
   view.bind({
     selectSite() {},
     selectDate() {},
-    applyDateRange() {},
     addSite() {},
     requestDeleteHistory() {},
     cancelDeleteHistory() {},
@@ -242,9 +234,9 @@ function bindNoopController(view, overrides = {}) {
   });
 }
 
-test("keeps the summary, date range, trends, and details in stable order", async () => {
+test("keeps the summary, trends, and details in stable order without date controls", async () => {
   const html = await readFile(new URL("../analysis.html", import.meta.url), "utf8");
-  const ids = ["summary", "date-range", "open-chart", "duration-chart", "visit-details"];
+  const ids = ["summary", "open-chart", "duration-chart", "visit-details"];
 
   assert.deepEqual(
     [...ids].sort((left, right) => (
@@ -253,62 +245,8 @@ test("keeps the summary, date range, trends, and details in stable order", async
     ids,
   );
   assert.match(html, /id="summary"[^>]+aria-label="今日概览"/);
-  assert.match(html, /id="date-range"[^>]+aria-label="日期范围"/);
-});
-
-test("submits date edits explicitly and preserves them across report refreshes", async () => {
-  const document = createDocumentFake();
-  const calls = [];
-  const view = createAnalysisView({ document });
-  bindNoopController(view, {
-    applyDateRange(range) {
-      calls.push(copy(range));
-    },
-  });
-  const model = viewModel();
-  view.render(model);
-
-  const region = document.elements.get("date-range");
-  const inputs = descendants(region).filter(element => element.tagName === "INPUT");
-  assert.deepEqual(inputs.map(input => [input.type, input.name, input.value, input.max]), [
-    ["date", "startDateKey", "2026-08-20", TODAY],
-    ["date", "endDateKey", TODAY, TODAY],
-  ]);
-  inputs[0].value = "2026-08-10";
-  inputs[1].value = "2026-08-31";
-  await inputs[0].dispatch("input");
-  await inputs[1].dispatch("input");
-  assert.deepEqual(calls, []);
-
-  view.render(viewModel({
-    report: { todaySummary: { openCount: 3, activeMs: 1_000 } },
-  }));
-  const preservedInputs = descendants(region).filter(element => element.tagName === "INPUT");
-  assert.deepEqual(preservedInputs.map(input => input.value), ["2026-08-10", "2026-08-31"]);
-
-  const form = descendants(region).find(element => element.tagName === "FORM");
-  await form.dispatch("submit");
-  assert.deepEqual(calls, [{
-    startDateKey: "2026-08-10",
-    endDateKey: "2026-08-31",
-  }]);
-
-  view.render(viewModel({
-    model: {
-      appliedRange: {
-        startDateKey: "2026-08-01",
-        endDateKey: "2026-08-02",
-        mode: "CUSTOM",
-      },
-      rangeError: {
-        code: "START_AFTER_END",
-        message: "起始日期不能晚于终止日期",
-      },
-    },
-  }));
-  const updatedInputs = descendants(region).filter(element => element.tagName === "INPUT");
-  assert.deepEqual(updatedInputs.map(input => input.value), ["2026-08-01", "2026-08-02"]);
-  assert.equal(byRole(region, "alert")[0].textContent, "起始日期不能晚于终止日期");
+  assert.doesNotMatch(html, /id="date-range"/);
+  assert.doesNotMatch(html, /type=["']date["']/);
 });
 
 test("renders aligned fourteen-day SVG lines with native button points", async () => {
@@ -381,26 +319,6 @@ test("keeps every zero-value date on one SVG baseline", () => {
     );
   }
   assert.equal(document.elements.get("visit-details").textContent, "当天没有访问记录");
-});
-
-test("samples visible labels across thirty days without hiding accessible points", () => {
-  const document = createDocumentFake();
-  const view = createAnalysisView({ document });
-  bindNoopController(view);
-  const days = reportDays(30);
-  const selectedDateKey = days[13].dateKey;
-  view.render(viewModel({ days, selectedDateKey }));
-
-  for (const chartId of ["open-chart", "duration-chart"]) {
-    const points = byDataset(document.elements.get(chartId), "dateKey");
-    const visible = points.filter(point => point.dataset.labelVisible === "true");
-    assert.equal(points.length, 30);
-    assert.ok(visible.length < 30);
-    assert.equal(points[0].dataset.labelVisible, "true");
-    assert.equal(points.at(-1).dataset.labelVisible, "true");
-    assert.equal(points[13].dataset.labelVisible, "true");
-    assert.ok(points.every(point => point.getAttribute("aria-label")?.includes(point.dataset.dateKey)));
-  }
 });
 
 test("renders only today's summary and continuous-tracking management copy", async () => {

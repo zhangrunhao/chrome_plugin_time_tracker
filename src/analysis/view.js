@@ -80,7 +80,6 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     siteList: requiredRegion(document, "site-list"),
     manageSites: requiredRegion(document, "manage-sites"),
     summary: requiredRegion(document, "summary"),
-    dateRange: requiredRegion(document, "date-range"),
     openChart: requiredRegion(document, "open-chart"),
     durationChart: requiredRegion(document, "duration-chart"),
     visitDetails: requiredRegion(document, "visit-details"),
@@ -90,8 +89,6 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
   let controller = null;
   let managerRenderKey = null;
   let dialogError = null;
-  let dateRangeControls = null;
-  let renderedRangeKey = null;
 
   regions.manageSites.addEventListener("click", () => {
     if (!regions.siteManager.open) {
@@ -186,75 +183,6 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     appendSummaryCard(document, cards, "今日打开次数", String(today.openCount));
     appendSummaryCard(document, cards, "今日有效使用时长", formatDuration(today.activeMs));
     regions.summary.replaceChildren(heading, cards);
-  }
-
-  function createDateRangeControls() {
-    const heading = element(document, "h2", { text: "日期范围" });
-    const form = element(document, "form", { className: "date-range-form" });
-    const startLabel = element(document, "label", { text: "起始日期" });
-    const startInput = element(document, "input");
-    startInput.type = "date";
-    startInput.name = "startDateKey";
-    startInput.required = true;
-    const endLabel = element(document, "label", { text: "终止日期" });
-    const endInput = element(document, "input");
-    endInput.type = "date";
-    endInput.name = "endDateKey";
-    endInput.required = true;
-    const submit = element(document, "button", { text: "应用" });
-    submit.type = "submit";
-    const error = element(document, "p", { className: "date-range-error" });
-    error.setAttribute("role", "alert");
-    error.setAttribute("aria-live", "polite");
-    error.hidden = true;
-    startLabel.append(startInput);
-    endLabel.append(endInput);
-    form.append(startLabel, endLabel, submit);
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
-      await controller?.applyDateRange({
-        startDateKey: startInput.value,
-        endDateKey: endInput.value,
-      });
-    });
-    regions.dateRange.replaceChildren(
-      heading,
-      element(document, "p", {
-        className: "date-range-hint",
-        text: "选择包含起止日期的范围，最多 30 天。",
-      }),
-      form,
-      error,
-    );
-    return { startInput, endInput, submit, error };
-  }
-
-  function renderDateRange(model) {
-    if (dateRangeControls === null) {
-      dateRangeControls = createDateRangeControls();
-    }
-    const appliedRange = model.appliedRange ?? {
-      startDateKey: "",
-      endDateKey: "",
-    };
-    const nextRangeKey = JSON.stringify([
-      appliedRange.startDateKey,
-      appliedRange.endDateKey,
-    ]);
-    if (nextRangeKey !== renderedRangeKey) {
-      dateRangeControls.startInput.value = appliedRange.startDateKey;
-      dateRangeControls.endInput.value = appliedRange.endDateKey;
-      renderedRangeKey = nextRangeKey;
-    }
-
-    const maximumDateKey = model.todayDateKey ?? "";
-    for (const input of [dateRangeControls.startInput, dateRangeControls.endInput]) {
-      input.max = maximumDateKey;
-      input.disabled = model.pending;
-    }
-    dateRangeControls.submit.disabled = model.pending;
-    dateRangeControls.error.hidden = model.rangeError === null;
-    dateRangeControls.error.textContent = model.rangeError?.message ?? "";
   }
 
   function renderChart(region, model, { title, valueFor, formatValue, unit }) {
@@ -520,7 +448,6 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       regions.manageSites.disabled = model.pending;
       const siteButtons = renderSites(model);
       renderSummary(model);
-      renderDateRange(model);
       const openChartButtons = renderChart(regions.openChart, model, {
         title: "每日打开次数",
         valueFor: day => day.openCount,

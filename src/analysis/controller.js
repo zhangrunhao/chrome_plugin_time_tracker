@@ -1,8 +1,6 @@
 import {
-  DATE_RANGE_ERROR_MESSAGES,
   getRollingDateRange,
   localDateKey,
-  resolveDateRange,
 } from "../domain/local-date-range.js";
 
 const FALLBACK_ERROR = Object.freeze({
@@ -30,19 +28,6 @@ function publicError(error) {
   return {
     code: error.code,
     message: error.message,
-  };
-}
-
-function publicDateRangeError(error) {
-  if (
-    typeof error?.code === "string"
-    && DATE_RANGE_ERROR_MESSAGES[error.code] === error.message
-  ) {
-    return { code: error.code, message: error.message };
-  }
-  return {
-    code: "INVALID_DATE_RANGE",
-    message: DATE_RANGE_ERROR_MESSAGES.INVALID_DATE_RANGE,
   };
 }
 
@@ -102,11 +87,9 @@ export function createAnalysisController({
     sites: [],
     selectedSiteId: null,
     todayDateKey: initialTodayDateKey,
-    appliedRange: { ...initialRange, mode: "ROLLING" },
     selectedDateKey: initialRange.endDateKey,
     report: null,
     error: null,
-    rangeError: null,
     pending: false,
     deleteConfirmationSiteId: null,
   };
@@ -125,17 +108,8 @@ export function createAnalysisController({
 
   function updateDateState() {
     const now = clock.now();
-    const todayDateKey = localDateKey(now);
-    state.todayDateKey = todayDateKey;
-    if (
-      state.appliedRange.mode === "ROLLING"
-      && state.appliedRange.endDateKey !== todayDateKey
-    ) {
-      state.appliedRange = {
-        ...getRollingDateRange(now),
-        mode: "ROLLING",
-      };
-    }
+    state.todayDateKey = localDateKey(now);
+    return getRollingDateRange(now);
   }
 
   async function loadReport() {
@@ -143,9 +117,9 @@ export function createAnalysisController({
       state.report = null;
       return;
     }
+    const range = updateDateState();
     state.report = await dataSource.getReport(state.selectedSiteId, {
-      startDateKey: state.appliedRange.startDateKey,
-      endDateKey: state.appliedRange.endDateKey,
+      ...range,
       selectedDateKey: state.selectedDateKey,
     });
   }
@@ -172,8 +146,8 @@ export function createAnalysisController({
     await loadReport();
     const availableDates = new Set(state.report.days.map(day => day.dateKey));
     if (!availableDates.has(state.selectedDateKey)) {
-      state.selectedDateKey = availableDates.has(state.appliedRange.endDateKey)
-        ? state.appliedRange.endDateKey
+      state.selectedDateKey = availableDates.has(state.report.range.endDateKey)
+        ? state.report.range.endDateKey
         : state.report.days.at(-1)?.dateKey ?? null;
       await loadReport();
     }
@@ -235,31 +209,6 @@ export function createAnalysisController({
     return refresh();
   }
 
-  async function applyDateRange({ startDateKey, endDateKey }) {
-    beginUserAction();
-    let window;
-    try {
-      window = resolveDateRange({
-        startDateKey,
-        endDateKey,
-        todayDateKey: localDateKey(clock.now()),
-      });
-    } catch (error) {
-      state.rangeError = publicDateRangeError(error);
-      render();
-      return null;
-    }
-
-    state.rangeError = null;
-    state.appliedRange = { startDateKey, endDateKey, mode: "CUSTOM" };
-    if (!window.days.some(day => day.dateKey === state.selectedDateKey)) {
-      state.selectedDateKey = endDateKey;
-    }
-    render();
-    await refresh();
-    return state.report;
-  }
-
   async function mutate(operation, affectedSiteId) {
     beginUserAction();
     state.pending = true;
@@ -288,7 +237,6 @@ export function createAnalysisController({
     refresh,
     selectSite,
     selectDate,
-    applyDateRange,
 
     addSite(input) {
       return mutate(() => dataSource.addSite(input), null);

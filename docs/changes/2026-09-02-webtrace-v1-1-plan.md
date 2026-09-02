@@ -1266,7 +1266,7 @@ Run:
 ```bash
 npm test
 node --check analysis.js
-rg -n "date-range|applyDateRange|appliedRange|rangeError|起始日期|终止日期|日期范围最多" analysis.html analysis.css analysis.js src/analysis
+rg -n "id=\"date-range\"|date-range-form|date-range-error|applyDateRange|appliedRange|rangeError|起始日期|终止日期|日期范围最多" analysis.html analysis.css analysis.js src/analysis
 git diff --check
 ```
 
@@ -1316,7 +1316,7 @@ Run:
 ```bash
 rg -n "fetch\(|XMLHttpRequest|WebSocket|EventSource" . --glob '*.js' --glob '!node_modules/**' --glob '!vendor/**'
 rg -n "(src|href)=['\"]https?://" analysis.html
-rg -n "WEBTRACE_SET_SITE_ENABLED|setSiteEnabled|停止统计|恢复统计|最近 7 天合计|chart-bar|--bar-height|date-range|applyDateRange|appliedRange|rangeError" background.js analysis.html analysis.css analysis.js src/analysis src/background src/shared
+rg -n "WEBTRACE_SET_SITE_ENABLED|setSiteEnabled|停止统计|恢复统计|最近 7 天合计|chart-bar|--bar-height|id=\"date-range\"|date-range-form|date-range-error|applyDateRange|appliedRange|rangeError" background.js analysis.html analysis.css analysis.js src/analysis src/background src/shared
 node --test tests/manifest.test.js
 ```
 
