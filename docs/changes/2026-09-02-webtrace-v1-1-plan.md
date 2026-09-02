@@ -2,22 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在保持 WebTrace V1 计时、恢复、存储和本地隐私契约不变的前提下，交付今日概览、1 至 30 个本地日的日期范围、两张通栏折线图和网站持续统计，并把扩展版本更新为 `1.1.0`。
+**Goal:** 在保持 WebTrace V1 计时、恢复、存储和本地隐私契约不变的前提下，交付今日概览、固定最近 14 个本地日的两张通栏折线图和网站持续统计，并把扩展版本更新为 `1.1.0`。
 
-**Architecture:** 把严格本地日期解析、滚动范围和通用日期窗口独立为纯领域模块，报表继续从 `Visit` 与 `ActiveInterval` 现场聚合；分析数据源分别查询所选范围和必要时的今日窗口，控制器持有已应用范围、滚动/自定义模式及范围错误。现有后台串行链在 tracker 初始化后执行一次停用网站迁移，并让 Chrome 生命周期事件等待迁移完成；分析视图用随扩展打包的 SVG 折线与原生按钮数据点替换柱状图，不引入运行时依赖或远程资源。
+**Architecture:** 严格本地日期解析、滚动范围和通用日期窗口保留为纯领域模块，报表继续从 `Visit` 与 `ActiveInterval` 现场聚合；分析控制器每次刷新计算滚动 14 日范围，视图不显示日期输入或范围错误。现有后台串行链在 tracker 初始化后执行一次停用网站迁移，并让 Chrome 生命周期事件等待迁移完成；分析视图用随扩展打包的 SVG 折线与原生按钮数据点替换柱状图，不引入运行时依赖或远程资源。
 
 **Tech Stack:** Chrome Manifest V3、原生 ES modules、Chrome `webNavigation`/`tabs`/`windows`/`idle`/`storage` API、IndexedDB、原生 HTML/CSS/SVG/DOM、Node.js 内置测试运行器、`fake-indexeddb@6.2.5`。
 
 **Spec:** [`2026-09-02-webtrace-v1-1-spec.md`](./2026-09-02-webtrace-v1-1-spec.md)
 
-**Status:** 待实施
+**Status:** 实施中（2026-09-02 用户确认移除自定义日期范围）
 
 ## Global Constraints
 
 - 目标版本必须是 `1.1.0`，目标平台继续是 Chrome Manifest V3，最低 Chrome 版本继续是 102。
-- 默认报表必须包含今天及此前 13 天，共 14 个本地日；自定义范围包含首尾日期，必须为 1 至 30 个本地日。
+- 报表必须固定包含今天及此前 13 天，共 14 个本地日；界面不得显示日期选择或超过 14 天的查看入口，更早数据继续保留。
 - 日期必须是可往返解析的规范 `YYYY-MM-DD` 本地日；日数和边界必须按本地日历推进，不能用固定 86,400,000 毫秒计算。
-- 今日概览始终展示所选网站的本地今天数据，不随自定义范围或明细选中日期变化。
+- 今日概览始终展示所选网站的本地今天数据，不随明细选中日期变化。
 - 打开次数继续按 `openedAt` 的本地日期归属；有效时长继续按本地午夜拆分；明细继续归属打开日并显示完整访问时长。
 - `Visit` 与 `ActiveInterval` 继续是报表唯一事实来源；不得新增日汇总缓存、修改 IndexedDB `webtrace` v1 schema、索引或保留期限。
 - 网站添加后持续统计；`Site.enabled` 作为兼容字段保留且最终始终为 `true`，用户界面和消息协议不得再提供停止或恢复操作。
@@ -28,19 +28,15 @@
 - 运行时代码不得调用 `fetch`、`XMLHttpRequest`、`WebSocket` 或 `EventSource`，不得加载远程代码、字体或图表资源，也不得保存完整 URL、路径、查询参数或网页标题。
 - 项目没有构建步骤；不得把语法检查、Node 自动测试或浏览器自动化表述成不存在的构建结果或手工 Chrome 通过。
 
+## 2026-09-02 Scope Revision
+
+用户在首次功能确认后撤销 1 至 30 日自定义范围，要求分析页只展示固定最近 14 日。Task 1 至 Task 6 保留已完成的实施记录；其中关于自定义范围、`AppliedDateRange`、`rangeError`、日期表单和 30 日界面验收的内容均由本节与 Task 7 覆盖。底层通用窗口与数据源能力保留，但没有产品入口；Task 8 使用修订后的固定 14 日验收标准完成 Change。
+
 ## Data Contracts and Shared Interfaces
 
 后续任务统一使用以下名称，不得为同一概念另建同义接口：
 
 ```js
-/** @typedef {'ROLLING'|'CUSTOM'} DateRangeMode */
-/**
- * @typedef {{
- *   startDateKey: string,
- *   endDateKey: string,
- *   mode: DateRangeMode
- * }} AppliedDateRange
- */
 /**
  * @typedef {{
  *   startDateKey: string,
@@ -80,12 +76,11 @@ aggregateReport(
 )
 trackingRepository.queryVisitsForReport(siteId, rangeStart, rangeEnd)
 dataSource.getReport(siteId, { startDateKey, endDateKey, selectedDateKey })
-controller.applyDateRange({ startDateKey, endDateKey })
 siteService.migrateDisabledSites()
 registerChromeEvents({ chrome, tracker, siteService, clock, lifecycleReady, reportError })
 ```
 
-`resolveDateRange()` 使用以下稳定错误，不得把浏览器原生校验文案作为产品契约：
+`resolveDateRange()` 的稳定错误保留为底层领域契约，但分析页不再显示或触发这些错误：
 
 ```js
 export const DATE_RANGE_ERROR_MESSAGES = Object.freeze({
@@ -96,17 +91,15 @@ export const DATE_RANGE_ERROR_MESSAGES = Object.freeze({
 });
 ```
 
-控制器传给视图的状态在现有字段基础上新增：
+控制器传给视图的日期状态只保留：
 
 ```js
 {
-  todayDateKey: string,
-  appliedRange: { startDateKey, endDateKey, mode },
-  rangeError: null | { code, message },
+  todayDateKey: string
 }
 ```
 
-无效范围只更新 `rangeError`；不得替换 `appliedRange`、`selectedDateKey` 或当前 `report`，也不得调用 `dataSource.getReport()`。
+控制器每次报表读取都用 `getRollingDateRange(clock.now())` 生成范围；不提供 `applyDateRange()`，也不保存 `appliedRange` 或 `rangeError`。
 
 ## File Map
 
@@ -116,9 +109,9 @@ export const DATE_RANGE_ERROR_MESSAGES = Object.freeze({
 | `src/domain/report.js` | 从范围访问和今日访问聚合 `Report`，拆分本地午夜并生成明细。 |
 | `src/storage/tracking-repository.js` | 通过两个既有复合索引读取与窗口相交的访问并按 ID 去重；schema 不变。 |
 | `src/analysis/data-source.js` | 解析查询窗口，范围不含今天时独立查询今日，构造领域报表并发送保留的管理命令。 |
-| `src/analysis/controller.js` | 管理网站、已应用范围、滚动/自定义模式、选中日期、范围错误和串行刷新。 |
-| `src/analysis/view.js` | 渲染今日概览、日期表单、SVG 折线、可键盘操作的数据点、明细与持续统计管理界面。 |
-| `analysis.html`, `analysis.css`, `analysis.js` | 分析页稳定区域、通栏布局、折线交互样式和 composition root/fallback model。 |
+| `src/analysis/controller.js` | 管理网站、滚动 14 日范围、选中日期和串行刷新。 |
+| `src/analysis/view.js` | 渲染今日概览、SVG 折线、可键盘操作的数据点、明细与持续统计管理界面。 |
+| `analysis.html`, `analysis.css`, `analysis.js` | 无日期表单的分析页稳定区域、通栏布局、折线交互样式和 composition root/fallback model。 |
 | `src/background/site-service.js` | 添加网站、幂等迁移旧停用配置、删除历史，并通过 tracker 同步而不回填。 |
 | `src/shared/protocol.js` | 只保留添加网站、删除历史、分析页注册和可见性消息。 |
 | `src/background/chrome-events.js`, `background.js` | 让生命周期与管理操作等待启动迁移，拒绝已移除命令，同时保持监听器同步注册。 |
@@ -126,9 +119,9 @@ export const DATE_RANGE_ERROR_MESSAGES = Object.freeze({
 | `tests/local-date-range.test.js` | 严格日期、1/14/30 日、跨月年闰日与 DST 日历推进。 |
 | `tests/report.test.js` | 范围聚合、今日概览、零值、午夜拆分和明细归属。 |
 | `tests/storage.test.js` | 历史窗口相交查询、未来记录过滤、并集去重与 schema 回归。 |
-| `tests/analysis-controller.test.js` | 默认/自定义范围、错误不变性、网站切换、选中日、午夜滚动和刷新串行化。 |
+| `tests/analysis-controller.test.js` | 固定滚动 14 日范围、网站切换、选中日、午夜滚动和刷新串行化。 |
 | `tests/analysis-data-source.test.js` | 范围与今日查询策略、命令收缩和稳定错误 envelope。 |
-| `tests/analysis-view.test.js` | SVG/DOM 折线、无障碍数据点、标签降采样、日期表单、管理文案和焦点。 |
+| `tests/analysis-view.test.js` | SVG/DOM 折线、无障碍数据点、14 日标签、无日期表单、管理文案和焦点。 |
 | `tests/site-service.test.js`, `tests/chrome-events.test.js` | 迁移幂等性、无回填、协议移除、启动门和真实 background composition。 |
 | `tests/helpers/webtrace-harness.js`, `tests/webtrace-flow.test.js` | 使用真实生产模块与 fake IndexedDB 证明 V1.1 跨边界流程且 V1 语义无回归。 |
 | `tests/manifest.test.js` | 版本、权限和内容脚本声明。 |
@@ -1195,7 +1188,98 @@ git add manifest.json tests/manifest.test.js tests/helpers/webtrace-harness.js t
 git commit -m "test: 覆盖 WebTrace V1.1 集成流程"
 ```
 
-### Task 7: Run real Chrome acceptance, update current facts, and archive the Change
+### Task 7: Remove custom date selection and fix the analysis page to rolling 14 days
+
+**Files:**
+- Modify: `analysis.html`
+- Modify: `analysis.css`
+- Modify: `analysis.js`
+- Modify: `src/analysis/controller.js`
+- Modify: `src/analysis/view.js`
+- Modify: `tests/analysis-controller.test.js`
+- Modify: `tests/analysis-view.test.js`
+- Modify: `tests/webtrace-flow.test.js`
+
+**Interfaces:**
+- Consumes: `getRollingDateRange(clock.now())`, range-aware `dataSource.getReport()` and the existing `Report`/line-chart interfaces.
+- Produces: a controller that always queries the current rolling 14 local days and a view with no date inputs, submit action or range-error state.
+
+- [ ] **Step 1: Write focused failing controller and view tests**
+
+Update the controller test harness so initialization, site switching and post-midnight refresh assert literal rolling 14-day query options. Add these consumer-visible assertions:
+
+```js
+assert.equal("applyDateRange" in controller, false);
+assert.equal(view.lastModel.appliedRange, undefined);
+assert.equal(view.lastModel.rangeError, undefined);
+assert.deepEqual(reportCalls.at(-1).options, {
+  startDateKey: "2026-08-20",
+  endDateKey: "2026-09-02",
+  selectedDateKey: "2026-09-02",
+});
+```
+
+Update the view test's required region list to omit `date-range`; assert the real `analysis.html` has no date region or `input[type=date]`, and render a normal report without `appliedRange`, `rangeError` or `applyDateRange`. Keep the real SVG point click/keyboard and synchronized selection assertions.
+
+Update the integrated flow so its user-facing acceptance asserts only the default report has exactly 14 days ending today; remove the historical 30-day product-flow assertion while retaining lower-level range coverage in domain and data-source tests.
+
+- [ ] **Step 2: Run the focused tests and verify RED**
+
+Run:
+
+```bash
+node --test tests/analysis-controller.test.js tests/analysis-view.test.js tests/webtrace-flow.test.js
+```
+
+Expected: FAIL because the controller still exposes custom-range state/action and the page still requires/renders the date form.
+
+- [ ] **Step 3: Implement the fixed 14-day product flow**
+
+In `src/analysis/controller.js`, remove `DATE_RANGE_ERROR_MESSAGES`, `resolveDateRange`, `publicDateRangeError`, `appliedRange`, `rangeError` and `applyDateRange`. In every `loadReport()` call compute:
+
+```js
+const range = getRollingDateRange(clock.now());
+await dataSource.getReport(state.selectedSiteId, {
+  ...range,
+  selectedDateKey: state.selectedDateKey,
+});
+```
+
+Keep `selectedDateKey` when it remains in the returned 14 days; otherwise select the returned range end. Continue updating `todayDateKey` on refresh.
+
+Remove the `date-range` section from `analysis.html`, its selectors and responsive rules from `analysis.css`, the fatal fallback fields from `analysis.js`, and all date-form construction/rendering from `src/analysis/view.js`. Do not change the range-aware domain/data-source contracts, storage retention, line-chart selection or accessibility.
+
+- [ ] **Step 4: Run focused tests and verify GREEN**
+
+Run:
+
+```bash
+node --test tests/analysis-controller.test.js tests/analysis-view.test.js tests/webtrace-flow.test.js
+```
+
+Expected: every focused controller, view and integration test PASS.
+
+- [ ] **Step 5: Run full regression and removed-UI checks**
+
+Run:
+
+```bash
+npm test
+node --check analysis.js
+rg -n "date-range|applyDateRange|appliedRange|rangeError|起始日期|终止日期|日期范围最多" analysis.html analysis.css analysis.js src/analysis
+git diff --check
+```
+
+Expected: every automated test passes, syntax and whitespace checks pass, and the removed-UI scan returns no production match.
+
+- [ ] **Step 6: Commit the confirmed product adjustment**
+
+```bash
+git add analysis.html analysis.css analysis.js src/analysis/controller.js src/analysis/view.js tests/analysis-controller.test.js tests/analysis-view.test.js tests/webtrace-flow.test.js
+git commit -m "feat: 固定展示最近十四天趋势"
+```
+
+### Task 8: Run real Chrome acceptance, update current facts, and archive the Change
 
 **Files:**
 - Modify: `README.md`
@@ -1232,7 +1316,7 @@ Run:
 ```bash
 rg -n "fetch\(|XMLHttpRequest|WebSocket|EventSource" . --glob '*.js' --glob '!node_modules/**' --glob '!vendor/**'
 rg -n "(src|href)=['\"]https?://" analysis.html
-rg -n "WEBTRACE_SET_SITE_ENABLED|setSiteEnabled|停止统计|恢复统计|最近 7 天合计|chart-bar|--bar-height" background.js analysis.html analysis.css analysis.js src
+rg -n "WEBTRACE_SET_SITE_ENABLED|setSiteEnabled|停止统计|恢复统计|最近 7 天合计|chart-bar|--bar-height|date-range|applyDateRange|appliedRange|rangeError" background.js analysis.html analysis.css analysis.js src/analysis src/background src/shared
 node --test tests/manifest.test.js
 ```
 
@@ -1244,26 +1328,25 @@ Use the current stable Google Chrome, reload this repository at `chrome://extens
 
 1. First open shows today's overview and exactly the rolling 14 local dates for the selected site.
 2. Both line charts are full-width and vertically stacked in a desktop window and a narrow window; all-zero dates remain visible.
-3. One-day and 30-day ranges apply; 31-day, future, reversed and impossible dates show the exact error while the prior charts remain.
-4. A historical range excluding today keeps today's overview current and selects the range end for details.
-5. Mouse click, Tab focus and Enter/Space activation on a point synchronize selection in both charts and update details; hover/focus/selected states expose full date/value.
-6. Site management has no stop/resume/status control, says sites continue tracking, and a newly added site records only after leaving and returning.
-7. A previously disabled V1 site becomes enabled after upgrade, retains history, does not backfill an already-open page, and records after leave/return.
-8. History deletion requires the new confirmation, preserves the site, clears old report data, and a later leave/return creates a fresh visit.
-9. Refresh, inside-site navigation, same-site child tabs, switching tabs/apps, minimize/restore, lock/unlock, service-worker restart, browser restart and repeated toolbar clicks retain the V1 opening/timing/recovery/reuse semantics.
-10. Chrome's extension details show no permission increase compared with V1.
+3. The page has no date inputs, apply button or route to data older than the rolling 14 days.
+4. Mouse click, Tab focus and Enter/Space activation on a point synchronize selection in both charts and update details; hover/focus/selected states expose full date/value.
+5. Site management has no stop/resume/status control, says sites continue tracking, and a newly added site records only after leaving and returning.
+6. A previously disabled V1 site becomes enabled after upgrade, retains history, does not backfill an already-open page, and records after leave/return.
+7. History deletion requires the new confirmation, preserves the site, clears old report data, and a later leave/return creates a fresh visit.
+8. Refresh, inside-site navigation, same-site child tabs, switching tabs/apps, minimize/restore, lock/unlock, service-worker restart, browser restart and repeated toolbar clicks retain the V1 opening/timing/recovery/reuse semantics.
+9. Chrome's extension details show no permission increase compared with V1.
 
 If a scenario fails, do not archive the Change. Add a focused automated regression in the owning task, fix it, rerun the complete automated verification, reload the extension and repeat the affected manual scenarios. If Chrome execution is unavailable, mark scenarios `NOT RUN`, leave the Change active and state that manual acceptance remains incomplete.
 
 - [ ] **Step 4: Update README and current facts only from verified behavior**
 
-Update root `README.md` to say default 14 days, custom 1–30 days, today's overview, vertically stacked line charts and continuous tracking; remove the stop/resume and fixed-seven-day wording.
+Update root `README.md` to say fixed rolling 14 days, no date selector, today's overview, vertically stacked line charts and continuous tracking; remove the stop/resume, custom-range and fixed-seven-day wording.
 
 Update `docs/current/project.md` with separate sections for:
 
-- Implemented facts: V1.1 version, date parsing/window semantics, today query, line-chart interaction/accessibility, persistent site enablement and unchanged storage/permission/privacy contracts.
+- Implemented facts: V1.1 version, fixed rolling 14-day window, older retained data having no current UI entry, line-chart interaction/accessibility, persistent site enablement and unchanged storage/permission/privacy contracts.
 - Effective decisions: current full HTTP/HTTPS permission and `webNavigation` remain accepted; narrower per-site permission work only begins after an actual store-review failure.
-- Limits/risks: 30-day per-query cap, no cross-site/weekly/monthly report, broad host permission risk, long retention and any browser caveat observed in Step 3.
+- Limits/risks: no view for dates older than 14 days, no cross-site/weekly/monthly report, broad host permission risk, long retention and any browser caveat observed in Step 3.
 - Verification: exact commands, actual automated count, Chrome version/date and per-scenario PASS/FAIL/NOT RUN without presenting automation as hand verification.
 
 Keep `docs/current/project.md` at or below 300 lines and update its `最后核验` date only when evidence was collected.

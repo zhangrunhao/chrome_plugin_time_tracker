@@ -11,8 +11,8 @@
 
 ## 当前 Change
 
-- [`2026-09-02-webtrace-v1-1-spec.md`](changes/2026-09-02-webtrace-v1-1-spec.md)：WebTrace V1.1 分析页、日期范围、折线图与持续统计规格，待评审。
-- [`2026-09-02-webtrace-v1-1-plan.md`](changes/2026-09-02-webtrace-v1-1-plan.md)：WebTrace V1.1 的实施、自动验证、Chrome 验收与文档归档计划，待执行。
+- [`2026-09-02-webtrace-v1-1-spec.md`](changes/2026-09-02-webtrace-v1-1-spec.md)：WebTrace V1.1 固定 14 日分析页、折线图与持续统计规格，实施中。
+- [`2026-09-02-webtrace-v1-1-plan.md`](changes/2026-09-02-webtrace-v1-1-plan.md)：WebTrace V1.1 的实施、自动验证、Chrome 验收与文档归档计划，执行中。
 
 ## 最近完成
 
