@@ -29,9 +29,12 @@ try {
     mode: "NO_SITES",
     sites: [],
     selectedSiteId: null,
+    todayDateKey: null,
+    appliedRange: null,
     selectedDateKey: null,
     report: null,
     error: { code: "INTERNAL_ERROR", message: "分析页加载失败，请重试" },
+    rangeError: null,
     pending: false,
     deleteConfirmationSiteId: null,
   });

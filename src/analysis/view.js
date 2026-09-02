@@ -39,6 +39,29 @@ function formatDateLabel(dateKey) {
   return `${Number(month)}/${Number(day)}`;
 }
 
+function pointPosition(index, count, value, maximum) {
+  const x = count === 1 ? 50 : (index / (count - 1)) * 100;
+  const y = maximum === 0 ? 84 : 84 - (value / maximum) * 68;
+  return { x, y };
+}
+
+function visibleLabelIndexes(days, selectedDateKey) {
+  if (days.length <= 14) {
+    return new Set(days.map((_day, index) => index));
+  }
+
+  const indexes = new Set([0, days.length - 1]);
+  const selectedIndex = days.findIndex(day => day.dateKey === selectedDateKey);
+  if (selectedIndex !== -1) {
+    indexes.add(selectedIndex);
+  }
+  const step = Math.ceil(days.length / 10);
+  for (let index = 0; index < days.length; index += step) {
+    indexes.add(index);
+  }
+  return indexes;
+}
+
 function appendSummaryCard(document, container, label, value) {
   const card = element(document, "div", { className: "summary-card" });
   card.append(
@@ -57,6 +80,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     siteList: requiredRegion(document, "site-list"),
     manageSites: requiredRegion(document, "manage-sites"),
     summary: requiredRegion(document, "summary"),
+    dateRange: requiredRegion(document, "date-range"),
     openChart: requiredRegion(document, "open-chart"),
     durationChart: requiredRegion(document, "duration-chart"),
     visitDetails: requiredRegion(document, "visit-details"),
@@ -66,6 +90,8 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
   let controller = null;
   let managerRenderKey = null;
   let dialogError = null;
+  let dateRangeControls = null;
+  let renderedRangeKey = null;
 
   regions.manageSites.addEventListener("click", () => {
     if (!regions.siteManager.open) {
@@ -146,10 +172,6 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       button.append(
         element(document, "strong", { className: "site-name", text: site.name }),
         element(document, "span", { className: "site-domain", text: site.domain }),
-        element(document, "span", {
-          className: `site-status ${site.enabled ? "is-enabled" : "is-disabled"}`,
-          text: site.enabled ? "统计中" : "已停用",
-        }),
       );
       items.append(button);
     }
@@ -158,47 +180,148 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
   }
 
   function renderSummary(model) {
-    const heading = element(document, "h2", { text: "最近 7 天合计" });
+    const heading = element(document, "h2", { text: "今日概览" });
     const cards = element(document, "div", { className: "summary-grid" });
-    const totals = model.report?.totals ?? { openCount: 0, activeMs: 0 };
-    appendSummaryCard(document, cards, "打开次数", String(totals.openCount));
-    appendSummaryCard(document, cards, "有效使用时长", formatDuration(totals.activeMs));
+    const today = model.report?.todaySummary ?? { openCount: 0, activeMs: 0 };
+    appendSummaryCard(document, cards, "今日打开次数", String(today.openCount));
+    appendSummaryCard(document, cards, "今日有效使用时长", formatDuration(today.activeMs));
     regions.summary.replaceChildren(heading, cards);
+  }
+
+  function createDateRangeControls() {
+    const heading = element(document, "h2", { text: "日期范围" });
+    const form = element(document, "form", { className: "date-range-form" });
+    const startLabel = element(document, "label", { text: "起始日期" });
+    const startInput = element(document, "input");
+    startInput.type = "date";
+    startInput.name = "startDateKey";
+    startInput.required = true;
+    const endLabel = element(document, "label", { text: "终止日期" });
+    const endInput = element(document, "input");
+    endInput.type = "date";
+    endInput.name = "endDateKey";
+    endInput.required = true;
+    const submit = element(document, "button", { text: "应用" });
+    submit.type = "submit";
+    const error = element(document, "p", { className: "date-range-error" });
+    error.setAttribute("role", "alert");
+    error.setAttribute("aria-live", "polite");
+    error.hidden = true;
+    startLabel.append(startInput);
+    endLabel.append(endInput);
+    form.append(startLabel, endLabel, submit);
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      await controller?.applyDateRange({
+        startDateKey: startInput.value,
+        endDateKey: endInput.value,
+      });
+    });
+    regions.dateRange.replaceChildren(
+      heading,
+      element(document, "p", {
+        className: "date-range-hint",
+        text: "选择包含起止日期的范围，最多 30 天。",
+      }),
+      form,
+      error,
+    );
+    return { startInput, endInput, submit, error };
+  }
+
+  function renderDateRange(model) {
+    if (dateRangeControls === null) {
+      dateRangeControls = createDateRangeControls();
+    }
+    const appliedRange = model.appliedRange ?? {
+      startDateKey: "",
+      endDateKey: "",
+    };
+    const nextRangeKey = JSON.stringify([
+      appliedRange.startDateKey,
+      appliedRange.endDateKey,
+    ]);
+    if (nextRangeKey !== renderedRangeKey) {
+      dateRangeControls.startInput.value = appliedRange.startDateKey;
+      dateRangeControls.endInput.value = appliedRange.endDateKey;
+      renderedRangeKey = nextRangeKey;
+    }
+
+    const maximumDateKey = model.todayDateKey ?? "";
+    for (const input of [dateRangeControls.startInput, dateRangeControls.endInput]) {
+      input.max = maximumDateKey;
+      input.disabled = model.pending;
+    }
+    dateRangeControls.submit.disabled = model.pending;
+    dateRangeControls.error.hidden = model.rangeError === null;
+    dateRangeControls.error.textContent = model.rangeError?.message ?? "";
   }
 
   function renderChart(region, model, { title, valueFor, formatValue, unit }) {
     const heading = element(document, "h2", { text: title });
-    const chart = element(document, "div", { className: "trend-chart" });
+    const chart = element(document, "div", { className: "line-chart" });
+    const plot = element(document, "div", { className: "chart-plot" });
     const days = model.report?.days ?? [];
     const maximum = Math.max(0, ...days.map(valueFor));
+    const labelIndexes = visibleLabelIndexes(days, model.selectedDateKey);
     const buttons = new Map();
+    const positions = days.map((day, index) => pointPosition(
+      index,
+      days.length,
+      valueFor(day),
+      maximum,
+    ));
 
-    for (const day of days) {
+    const namespace = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(namespace, "svg");
+    svg.setAttribute("class", "trend-line");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    const baseline = document.createElementNS(namespace, "line");
+    baseline.setAttribute("class", "trend-baseline");
+    baseline.setAttribute("x1", "0");
+    baseline.setAttribute("y1", "84");
+    baseline.setAttribute("x2", "100");
+    baseline.setAttribute("y2", "84");
+    const polyline = document.createElementNS(namespace, "polyline");
+    polyline.setAttribute("class", "trend-polyline");
+    polyline.setAttribute("points", positions.map(({ x, y }) => `${x},${y}`).join(" "));
+    svg.append(baseline, polyline);
+
+    const points = element(document, "div", { className: "chart-points" });
+
+    for (const [index, day] of days.entries()) {
       const value = valueFor(day);
       const formattedValue = formatValue(value);
-      const button = element(document, "button", { className: "chart-day" });
+      const { x, y } = positions[index];
+      const button = element(document, "button", { className: "chart-point" });
       button.type = "button";
       button.dataset.dateKey = day.dateKey;
+      button.dataset.labelVisible = String(labelIndexes.has(index));
       button.disabled = model.pending;
+      button.style.setProperty("--point-x", String(x));
+      button.style.setProperty("--point-y", String(y));
       button.setAttribute("aria-pressed", String(day.dateKey === model.selectedDateKey));
       button.setAttribute("aria-label", `${day.dateKey}，${formattedValue}${unit}`);
       button.addEventListener("click", () => controller?.selectDate(day.dateKey));
       buttons.set(day.dateKey, button);
-
-      const barTrack = element(document, "span", { className: "chart-track" });
-      const bar = element(document, "span", { className: "chart-bar" });
-      const height = value === 0 || maximum === 0
-        ? 0
-        : Math.round((value / maximum) * 100);
-      bar.style.setProperty("--bar-height", `${height}%`);
-      barTrack.append(bar);
       button.append(
-        element(document, "span", { className: "chart-value", text: formattedValue }),
-        barTrack,
-        element(document, "span", { className: "chart-date", text: formatDateLabel(day.dateKey) }),
+        element(document, "span", { className: "chart-point-marker" }),
+        element(document, "span", {
+          className: "chart-tooltip",
+          text: `${day.dateKey} · ${formattedValue}${unit}`,
+        }),
+        element(document, "span", {
+          className: "chart-label",
+          text: formatDateLabel(day.dateKey),
+        }),
       );
-      chart.append(button);
+      points.append(button);
     }
+    plot.append(svg, points);
+    chart.append(plot);
     region.replaceChildren(heading, chart);
     return buttons;
   }
@@ -255,7 +378,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
     );
     const warning = element(document, "p", {
       className: "danger-copy",
-      text: "这会永久删除该网站的全部访问记录，但保留网站配置；此操作无法撤销。",
+      text: "现有访问记录会永久删除且无法撤销。网站配置会保留；删除后网站仍会持续统计，新访问会再次产生记录。",
     });
     const actions = element(document, "div", { className: "dialog-actions" });
     actions.append(
@@ -331,6 +454,10 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       }
     });
 
+    const managerHint = element(document, "p", {
+      className: "manager-hint",
+      text: "网站添加后将持续统计",
+    });
     const listHeading = element(document, "h3", { text: "已添加网站" });
     const siteRows = element(document, "div", { className: "manager-sites" });
     if (model.sites.length === 0) {
@@ -345,10 +472,6 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       identity.append(
         element(document, "strong", { text: site.name }),
         element(document, "span", { text: site.domain }),
-        element(document, "span", {
-          className: "manager-site-status",
-          text: site.enabled ? "统计中" : "已停用",
-        }),
       );
       const actions = element(document, "div", { className: "manager-site-actions" });
       actions.append(
@@ -368,6 +491,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       close,
       createDialogError(),
       form,
+      managerHint,
       listHeading,
       siteRows,
     );
@@ -379,7 +503,6 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
         id: site.id,
         name: site.name,
         domain: site.domain,
-        enabled: site.enabled,
         createdAt: site.createdAt,
       })),
       pending: model.pending,
@@ -397,6 +520,7 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       regions.manageSites.disabled = model.pending;
       const siteButtons = renderSites(model);
       renderSummary(model);
+      renderDateRange(model);
       const openChartButtons = renderChart(regions.openChart, model, {
         title: "每日打开次数",
         valueFor: day => day.openCount,
