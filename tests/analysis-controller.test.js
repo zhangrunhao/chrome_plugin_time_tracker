@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   WEBTRACE_ADD_SITE,
   WEBTRACE_DELETE_SITE_HISTORY,
-  WEBTRACE_SET_SITE_ENABLED,
 } from "../src/shared/protocol.js";
 import { createAnalysisDataSource } from "../src/analysis/data-source.js";
 import { createAnalysisController } from "../src/analysis/controller.js";
@@ -271,15 +270,6 @@ function createAnalysisHarness({
       nextSiteId += 1;
       storedSites.push(site);
       return { ok: true, data: copy(site) };
-    }
-    if (message.type === WEBTRACE_SET_SITE_ENABLED) {
-      storedSites = storedSites.map(site => (
-        site.id === message.siteId ? { ...site, enabled: message.enabled } : site
-      ));
-      return {
-        ok: true,
-        data: copy(storedSites.find(site => site.id === message.siteId)),
-      };
     }
     if (message.type === WEBTRACE_DELETE_SITE_HISTORY) {
       storedVisits = storedVisits.filter(visit => visit.siteId !== message.siteId);
@@ -594,7 +584,7 @@ test("refresh falls back to the earliest site while preserving an in-range date"
   assert.equal(view.lastModel.selectedDateKey, "2026-08-27");
 });
 
-test("reloads after mutations, keeps the affected site selected, and exposes pending state", async () => {
+test("reloads after adding a site, selects it, and exposes pending state", async () => {
   const { controller, view, repositoryCalls } = createAnalysisHarness({
     now: NOW,
     sites: [SITES[1]],
@@ -605,14 +595,10 @@ test("reloads after mutations, keeps the affected site selected, and exposes pen
   const addedSiteId = view.lastModel.selectedSiteId;
   assert.equal(addedSiteId, "added-1");
   assert.ok(view.models.some(model => model.pending === true));
-
-  await controller.setSiteEnabled(addedSiteId, false);
-  assert.equal(view.lastModel.selectedSiteId, addedSiteId);
-  assert.equal(view.lastModel.sites.find(site => site.id === addedSiteId).enabled, false);
-  assert.deepEqual(repositoryCalls.sendMessage.slice(0, 2), [
+  assert.deepEqual(repositoryCalls.sendMessage, [
     { type: WEBTRACE_ADD_SITE, name: "B 站", input: "bilibili.com" },
-    { type: WEBTRACE_SET_SITE_ENABLED, siteId: addedSiteId, enabled: false },
   ]);
+  assert.equal("setSiteEnabled" in controller, false);
 });
 
 test("requests and cancels deletion without mutation, then deletes only after explicit confirmation", async () => {
@@ -984,9 +970,6 @@ test("renders all sites and requires explicit confirmation before deleting histo
     addSite(input) {
       calls.push(["addSite", copy(input)]);
     },
-    setSiteEnabled(siteId, enabled) {
-      calls.push(["setSiteEnabled", siteId, enabled]);
-    },
     requestDeleteHistory(siteId) {
       calls.push(["requestDeleteHistory", siteId]);
     },
@@ -1049,7 +1032,6 @@ test("uses required add fields, shows stable errors, and disables operation cont
     addSite(input) {
       calls.push(copy(input));
     },
-    setSiteEnabled() {},
     requestDeleteHistory() {},
     cancelDeleteHistory() {},
     confirmDeleteHistory() {},
@@ -1086,7 +1068,6 @@ test("keeps an in-progress site form intact across report-only renders", async (
     selectSite() {},
     selectDate() {},
     addSite() {},
-    setSiteEnabled() {},
     requestDeleteHistory() {},
     cancelDeleteHistory() {},
     confirmDeleteHistory() {},
@@ -1127,7 +1108,6 @@ test("mirrors stable operation errors into an open modal dialog alert", async ()
     selectSite() {},
     selectDate() {},
     addSite() {},
-    setSiteEnabled() {},
     requestDeleteHistory() {},
     cancelDeleteHistory() {},
     confirmDeleteHistory() {},

@@ -5,7 +5,6 @@ import {
   WEBTRACE_ANALYSIS_READY,
   WEBTRACE_DELETE_SITE_HISTORY,
   WEBTRACE_PAGE_VISIBILITY,
-  WEBTRACE_SET_SITE_ENABLED,
 } from "../shared/protocol.js";
 
 function ignoreRejection(promise) {
@@ -126,11 +125,6 @@ function siteCommandFor(message, siteService) {
         name: message.name,
         input: message.input,
       });
-    case WEBTRACE_SET_SITE_ENABLED:
-      return () => siteService.setSiteEnabled({
-        siteId: message.siteId,
-        enabled: message.enabled,
-      });
     case WEBTRACE_DELETE_SITE_HISTORY:
       return () => siteService.deleteSiteHistory({
         siteId: message.siteId,
@@ -145,20 +139,21 @@ export function registerChromeEvents({
   tracker,
   siteService,
   clock,
+  lifecycleReady,
   reportError = () => {},
 }) {
   if (
     typeof siteService?.addSite !== "function" ||
-    typeof siteService?.setSiteEnabled !== "function" ||
     typeof siteService?.deleteSiteHistory !== "function"
   ) {
     throw new TypeError("A site service is required");
   }
 
+  const readiness = lifecycleReady ?? tracker.ready;
   let lifecycleTail = Promise.resolve();
   const reserveLifecycle = operation => {
     const result = lifecycleTail
-      .then(() => tracker.ready)
+      .then(() => readiness)
       .then(operation);
     lifecycleTail = result.catch(() => {});
     return ignoreRejection(result);
@@ -297,5 +292,7 @@ export function registerChromeEvents({
     return true;
   });
 
-  chrome.action.onClicked.addListener(() => ignoreRejection(openOrFocusAnalysisPage(chrome)));
+  chrome.action.onClicked.addListener(() => (
+    reserveLifecycle(() => openOrFocusAnalysisPage(chrome))
+  ));
 }

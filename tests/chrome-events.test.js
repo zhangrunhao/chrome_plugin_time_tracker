@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { IDBFactory } from "fake-indexeddb";
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import {
   openOrFocusAnalysisPage,
   registerChromeEvents,
@@ -10,8 +10,9 @@ import {
   SITE_ERROR_MESSAGES,
   WEBTRACE_ADD_SITE,
   WEBTRACE_DELETE_SITE_HISTORY,
-  WEBTRACE_SET_SITE_ENABLED,
 } from "../src/shared/protocol.js";
+import { createTrackingRepository } from "../src/storage/tracking-repository.js";
+import { openWebTraceDb } from "../src/storage/webtrace-db.js";
 
 function deferred() {
   let resolve;
@@ -48,6 +49,7 @@ function createChromeHarness({
   queryCanSeeAnalysisTabs = true,
   windows = [],
   trackerReady = Promise.resolve(),
+  lifecycleReady,
   storageAccessError = null,
   tabsGetReady = Promise.resolve(),
   tabsCreateStarted = null,
@@ -121,7 +123,10 @@ function createChromeHarness({
         calls.tabsGet.push(tabId);
         await tabsGetReady;
         const analysisTab = analysisTabRecords.find(tab => tab.id === tabId);
-        return structuredClone(analysisTab ?? { id: tabId, windowId: 2 });
+        const browserTab = windows
+          .flatMap(window => window.tabs ?? [])
+          .find(tab => tab.id === tabId);
+        return structuredClone(analysisTab ?? browserTab ?? { id: tabId, windowId: 2 });
       },
       async query(query) {
         calls.tabsQuery.push(structuredClone(query));
@@ -191,15 +196,10 @@ function createChromeHarness({
   };
   const siteService = injectedSiteService ?? {
     addSiteCalls: [],
-    setSiteEnabledCalls: [],
     deleteSiteHistoryCalls: [],
     async addSite(input) {
       this.addSiteCalls.push(structuredClone(input));
       return { id: "site-1", ...structuredClone(input) };
-    },
-    async setSiteEnabled(input) {
-      this.setSiteEnabledCalls.push(structuredClone(input));
-      return structuredClone(input);
     },
     async deleteSiteHistory(input) {
       this.deleteSiteHistoryCalls.push(structuredClone(input));
@@ -226,6 +226,7 @@ function createChromeHarness({
     calls,
     reportError,
     reportedErrors,
+    lifecycleReady,
   };
 }
 
@@ -383,11 +384,6 @@ test("handles each trusted analysis command with one successful response envelop
       expectedData: { id: "site-1", name: "知乎", input: "zhihu.com" },
     },
     {
-      message: { type: WEBTRACE_SET_SITE_ENABLED, siteId: "site-1", enabled: false },
-      expectedCall: ["setSiteEnabledCalls", { siteId: "site-1", enabled: false }],
-      expectedData: { siteId: "site-1", enabled: false },
-    },
-    {
       message: { type: WEBTRACE_DELETE_SITE_HISTORY, siteId: "site-1" },
       expectedCall: ["deleteSiteHistoryCalls", { siteId: "site-1" }],
       expectedData: { siteId: "site-1" },
@@ -426,9 +422,9 @@ test("reserves a site command before later lifecycle events until persistence an
     name: "知乎",
     domain: "zhihu.com",
     enabled: true,
-    createdAt: 100,
+    createdAt: 8_000,
   };
-  let storedSites = [structuredClone(site)];
+  let storedSites = [];
   const siteRepository = {
     async list() {
       return structuredClone(storedSites);
@@ -451,7 +447,7 @@ test("reserves a site command before later lifecycle events until persistence an
     siteRepository,
     tracker: siteTracker,
     clock: { now: () => 8_000 },
-    idFactory: () => "unused",
+    idFactory: () => "site-1",
   });
   const harness = createChromeHarness({ siteService });
   registerChromeEvents(harness);
@@ -459,7 +455,7 @@ test("reserves a site command before later lifecycle events until persistence an
   const responseReady = deferred();
 
   await harness.events.runtimeOnMessage.emit(
-    { type: WEBTRACE_SET_SITE_ENABLED, siteId: "site-1", enabled: false },
+    { type: WEBTRACE_ADD_SITE, name: "知乎", input: "zhihu.com" },
     { url: "chrome-extension://test/analysis.html" },
     response => {
       responses.push(structuredClone(response));
@@ -490,7 +486,7 @@ test("reserves a site command before later lifecycle events until persistence an
   await Promise.all([navigation, responseReady.promise]);
   assert.deepEqual(responses, [{
     ok: true,
-    data: { ...site, enabled: false },
+    data: site,
   }]);
   assert.deepEqual(
     harness.tracker.dispatchCalls.map(event => event.type),
@@ -504,14 +500,7 @@ test("finishes dirty-site marking after sync failure before dispatching later ev
   const markStarted = deferred();
   const markReady = deferred();
   const operationLog = [];
-  const site = {
-    id: "site-1",
-    name: "知乎",
-    domain: "zhihu.com",
-    enabled: true,
-    createdAt: 100,
-  };
-  let storedSites = [structuredClone(site)];
+  let storedSites = [];
   const siteService = createSiteService({
     siteRepository: {
       async list() {
@@ -536,7 +525,7 @@ test("finishes dirty-site marking after sync failure before dispatching later ev
       async deleteSiteHistory() {},
     },
     clock: { now: () => 8_000 },
-    idFactory: () => "unused",
+    idFactory: () => "site-1",
   });
   const harness = createChromeHarness({ siteService });
   const originalDispatch = harness.tracker.dispatch.bind(harness.tracker);
@@ -549,7 +538,7 @@ test("finishes dirty-site marking after sync failure before dispatching later ev
   const responseReady = deferred();
 
   await harness.events.runtimeOnMessage.emit(
-    { type: WEBTRACE_SET_SITE_ENABLED, siteId: "site-1", enabled: false },
+    { type: WEBTRACE_ADD_SITE, name: "知乎", input: "zhihu.com" },
     { url: "chrome-extension://test/analysis.html" },
     response => {
       responses.push(structuredClone(response));
@@ -592,7 +581,6 @@ test("returns one stable error envelope and reports only code and stack", async 
     async addSite() {
       throw failure;
     },
-    async setSiteEnabled() {},
     async deleteSiteHistory() {},
   };
   const harness = createChromeHarness({ siteService });
@@ -639,11 +627,69 @@ test("rejects management commands from web pages and unknown message types synch
     { url: "chrome-extension://test/analysis.html" },
     response => responses.push(response),
   );
+  const [legacyReturn] = await harness.events.runtimeOnMessage.emit(
+    { type: "WEBTRACE_SET_SITE_ENABLED", siteId: "site-1", enabled: false },
+    { url: "chrome-extension://test/analysis.html" },
+    response => responses.push(response),
+  );
 
   assert.equal(untrustedReturn, false);
   assert.equal(unknownReturn, false);
+  assert.equal(legacyReturn, false);
   assert.deepEqual(responses, []);
   assert.deepEqual(harness.siteService.addSiteCalls, []);
+});
+
+test("queues lifecycle work and analysis opening behind the injected readiness gate", async () => {
+  const ready = deferred();
+  const harness = createChromeHarness({ lifecycleReady: ready.promise });
+  registerChromeEvents(harness);
+  const responses = [];
+  const responseReady = deferred();
+
+  await harness.events.runtimeOnMessage.emit(
+    { type: "WEBTRACE_PAGE_VISIBILITY", visible: true },
+    { tab: { id: 1 }, documentId: "doc-1", url: "https://www.zhihu.com/" },
+  );
+  const navigation = harness.events.webNavigationOnCommitted.emit({
+    tabId: 1,
+    frameId: 0,
+    url: "https://www.zhihu.com/question/1",
+    documentId: "doc-1",
+  });
+  const [commandReturn] = await harness.events.runtimeOnMessage.emit(
+    { type: WEBTRACE_DELETE_SITE_HISTORY, siteId: "site-1" },
+    { url: "chrome-extension://test/analysis.html" },
+    response => {
+      responses.push(structuredClone(response));
+      responseReady.resolve();
+    },
+  );
+  const opening = harness.events.actionOnClicked.emit();
+  await Promise.resolve();
+
+  assert.equal(commandReturn, true);
+  assert.deepEqual(harness.tracker.dispatchCalls, []);
+  assert.deepEqual(harness.siteService.deleteSiteHistoryCalls, []);
+  assert.deepEqual(harness.calls.tabsQuery, []);
+  assert.deepEqual(harness.calls.tabsCreate, []);
+  assert.deepEqual(responses, []);
+
+  ready.resolve();
+  await Promise.all([navigation, opening, responseReady.promise]);
+
+  assert.deepEqual(
+    harness.tracker.dispatchCalls.map(event => event.type),
+    ["PAGE_VISIBILITY", "NAVIGATION_COMMITTED"],
+  );
+  assert.deepEqual(harness.siteService.deleteSiteHistoryCalls, [{ siteId: "site-1" }]);
+  assert.deepEqual(responses, [{
+    ok: true,
+    data: { siteId: "site-1" },
+  }]);
+  assert.deepEqual(harness.calls.tabsCreate, [{
+    url: "chrome-extension://test/analysis.html",
+  }]);
 });
 
 test("rejects inherited object property names as unknown commands synchronously", async () => {
@@ -663,7 +709,6 @@ test("rejects inherited object property names as unknown commands synchronously"
   await Promise.resolve();
   assert.deepEqual(responses, []);
   assert.deepEqual(harness.siteService.addSiteCalls, []);
-  assert.deepEqual(harness.siteService.setSiteEnabledCalls, []);
   assert.deepEqual(harness.siteService.deleteSiteHistoryCalls, []);
 });
 
@@ -968,13 +1013,41 @@ test("the content script reports silently, uses one 4-second timer, and resumes 
   }
 });
 
-test("background restricts both storage areas before tracker initialization", async () => {
-  const harness = createChromeHarness({ windows: [] });
+test("background migrates disabled sites without backfill after restricting storage", async () => {
+  const disabledSite = {
+    id: "site-1",
+    name: "知乎",
+    domain: "zhihu.com",
+    enabled: false,
+    createdAt: 100,
+  };
+  const storageState = {
+    local: { webtraceSitesV1: [disabledSite] },
+    session: {},
+  };
+  const harness = createChromeHarness({
+    storageState,
+    windows: [{
+      id: 1,
+      type: "normal",
+      state: "normal",
+      focused: true,
+      tabs: [{
+        id: 1,
+        windowId: 1,
+        url: "https://www.zhihu.com/question/already-open",
+        active: true,
+      }],
+    }],
+  });
   const factory = new IDBFactory();
   const originalChrome = globalThis.chrome;
   const originalIndexedDb = globalThis.indexedDB;
+  const originalIdbKeyRange = globalThis.IDBKeyRange;
+  let database;
   globalThis.chrome = harness.chrome;
   globalThis.indexedDB = factory;
+  globalThis.IDBKeyRange = IDBKeyRange;
 
   try {
     const background = await import(`../background.js?success=${Date.now()}`);
@@ -988,10 +1061,54 @@ test("background restricts both storage areas before tracker initialization", as
     const firstStorageRead = harness.calls.storageOperations.findIndex(item => item.endsWith(":get"));
     assert.ok(firstStorageRead > harness.calls.storageOperations.indexOf("local:access"));
     assert.ok(firstStorageRead > harness.calls.storageOperations.indexOf("session:access"));
-    assert.deepEqual(harness.calls.idleQueryState, [60]);
+    assert.deepEqual(harness.calls.idleQueryState, [60, 60]);
+    assert.equal(storageState.local.webtraceSitesV1[0].enabled, true);
+    assert.deepEqual(
+      harness.calls.storageOperations.filter(item => item === "local:set").length,
+      1,
+    );
+
+    database = await openWebTraceDb(factory);
+    const records = createTrackingRepository(database);
+    const visits = () => records.queryVisitsForReport(
+      "site-1",
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
+    assert.deepEqual(await visits(), []);
+
+    await harness.events.webNavigationOnCommitted.emit({
+      tabId: 1,
+      frameId: 0,
+      url: "https://www.zhihu.com/question/same-site",
+      documentId: "doc-same",
+      transitionType: "link",
+      transitionQualifiers: [],
+    });
+    assert.deepEqual(await visits(), []);
+
+    await harness.events.webNavigationOnCommitted.emit({
+      tabId: 1,
+      frameId: 0,
+      url: "https://example.org/",
+      documentId: "doc-away",
+      transitionType: "link",
+      transitionQualifiers: [],
+    });
+    await harness.events.webNavigationOnCommitted.emit({
+      tabId: 1,
+      frameId: 0,
+      url: "https://www.zhihu.com/question/returned",
+      documentId: "doc-returned",
+      transitionType: "link",
+      transitionQualifiers: [],
+    });
+    assert.equal((await visits()).length, 1);
   } finally {
+    database?.close();
     globalThis.chrome = originalChrome;
     globalThis.indexedDB = originalIndexedDb;
+    globalThis.IDBKeyRange = originalIdbKeyRange;
   }
 });
 

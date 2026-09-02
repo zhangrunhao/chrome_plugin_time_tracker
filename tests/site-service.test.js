@@ -158,53 +158,37 @@ test("serializes simultaneous additions so normalized duplicates cannot pass tog
   assert.equal(tracker.updateSitesCalls.length, 1);
 });
 
-test("disables and re-enables a site without changing its identity or deleting history", async () => {
-  const site = {
-    id: "site-1",
+test("migrates disabled sites once without changing identity or backfilling", async () => {
+  const enabled = {
+    id: "site-enabled",
+    name: "B 站",
+    domain: "bilibili.com",
+    enabled: true,
+    createdAt: 50,
+  };
+  const disabled = {
+    id: "site-disabled",
     name: "知乎",
     domain: "zhihu.com",
-    enabled: true,
+    enabled: false,
     createdAt: 100,
   };
-  const { service, repository, tracker, clock } = createHarness({ sites: [site] });
+  const { service, repository, tracker } = createHarness({
+    sites: [enabled, disabled],
+  });
+  const migrated = [enabled, { ...disabled, enabled: true }];
 
-  clock.set(2_000);
-  const disabled = await service.setSiteEnabled({ siteId: site.id, enabled: false });
-  clock.set(3_000);
-  const enabled = await service.setSiteEnabled({ siteId: site.id, enabled: true });
+  const first = await service.migrateDisabledSites();
+  const second = await service.migrateDisabledSites();
 
-  assert.deepEqual(disabled, { ...site, enabled: false });
-  assert.deepEqual(enabled, site);
-  assert.deepEqual(repository.snapshot(), [site]);
-  assert.deepEqual(tracker.updateSitesCalls, [
-    {
-      sites: [{ ...site, enabled: false }],
-      options: { at: 2_000, allowBackfill: false },
-    },
-    {
-      sites: [site],
-      options: { at: 3_000, allowBackfill: false },
-    },
-  ]);
+  assert.deepEqual(first, migrated);
+  assert.deepEqual(second, migrated);
+  assert.deepEqual(repository.replaceCalls, [migrated]);
   assert.deepEqual(tracker.deleteSiteHistoryCalls, []);
-});
-
-test("does not persist or synchronize an already stored enabled state", async () => {
-  const site = {
-    id: "site-1",
-    name: "知乎",
-    domain: "zhihu.com",
-    enabled: true,
-    createdAt: 100,
-  };
-  const { service, repository, tracker } = createHarness({ sites: [site] });
-
-  assert.deepEqual(
-    await service.setSiteEnabled({ siteId: site.id, enabled: true }),
-    site,
-  );
-  assert.deepEqual(repository.replaceCalls, []);
-  assert.deepEqual(tracker.updateSitesCalls, []);
+  assert.deepEqual(tracker.updateSitesCalls, [{
+    sites: migrated,
+    options: { at: 1_000, allowBackfill: false },
+  }]);
 });
 
 test("keeps saved configuration authoritative and marks it dirty when tracker sync fails", async () => {
@@ -282,13 +266,9 @@ test("does not claim history deletion succeeded when tracker deletion fails", as
   assert.deepEqual(repository.snapshot(), [site]);
 });
 
-test("reports missing site configuration for state and deletion commands", async () => {
+test("reports missing site configuration for deletion commands", async () => {
   const { service } = createHarness();
 
-  await expectServiceError(
-    service.setSiteEnabled({ siteId: "missing", enabled: false }),
-    "SITE_NOT_FOUND",
-  );
   await expectServiceError(
     service.deleteSiteHistory({ siteId: "missing" }),
     "SITE_NOT_FOUND",

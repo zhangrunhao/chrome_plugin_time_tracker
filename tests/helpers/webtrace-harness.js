@@ -389,10 +389,6 @@ export async function createWebTraceHarness({ now }) {
       return chromeBoundary.confirm(tabId);
     },
 
-    setSiteEnabled(siteId, enabled) {
-      return dataSource.setSiteEnabled(siteId, enabled);
-    },
-
     deleteHistory(siteId) {
       return dataSource.deleteSiteHistory(siteId);
     },

@@ -353,12 +353,6 @@ export function createAnalysisView({ document = globalThis.document } = {}) {
       const actions = element(document, "div", { className: "manager-site-actions" });
       actions.append(
         operationButton(
-          site.enabled ? "停止统计" : "恢复统计",
-          () => controller?.setSiteEnabled(site.id, !site.enabled),
-          model.pending,
-          "toggle-site",
-        ),
-        operationButton(
           "删除历史",
           () => controller?.requestDeleteHistory(site.id),
           model.pending,

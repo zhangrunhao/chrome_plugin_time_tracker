@@ -294,13 +294,6 @@ export function createAnalysisController({
       return mutate(() => dataSource.addSite(input), null);
     },
 
-    setSiteEnabled(siteId, enabled) {
-      return mutate(
-        () => dataSource.setSiteEnabled(siteId, enabled),
-        siteId,
-      );
-    },
-
     requestDeleteHistory(siteId) {
       beginUserAction();
       state.deleteConfirmationSiteId = state.sites.some(site => site.id === siteId)

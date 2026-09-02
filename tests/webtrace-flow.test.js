@@ -138,32 +138,26 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   assert.equal(visits[1].endedAt, null);
   const secondVisitId = visits[1].id;
 
-  // 10. Disabling ends the visit while preserving queryable history.
-  const disabled = await harness.setSiteEnabled(site.id, false);
-  assert.equal(disabled.enabled, false);
+  // 10. Continuous tracking keeps the site enabled while a normal leave ends the visit.
+  await harness.navigate(1, "https://example.org/again");
   visits = await harness.getVisits(site.id);
   assert.equal(visits.length, 2);
   assert.equal(visits[1].id, secondVisitId);
   assert.equal(visits[1].endedAt, startedAt + 26_000);
+  assert.equal((await harness.listSites())[0].enabled, true);
   assert.deepEqual(
     reportTotals(await harness.getReport(site.id, { selectedDateKey: "2026-08-31" })),
     { openCount: 2, activeMs: 26_000 },
   );
 
-  // 11. Re-enabling an already-open page does not backfill a third visit.
-  const enabled = await harness.setSiteEnabled(site.id, true);
-  assert.equal(enabled.enabled, true);
-  assert.equal((await harness.getVisits(site.id)).length, 2);
-
-  // 12. Leaving and returning after re-enable opens the third visit.
-  await harness.navigate(1, "https://example.org/again");
+  // 11. Returning under continuous tracking opens the third visit.
   await harness.navigate(1, "https://www.zhihu.com/question/4");
   visits = await harness.getVisits(site.id);
   assert.equal(visits.length, 3);
   assert.equal(visits[2].endedAt, null);
   const deletedVisitIds = visits.map(visit => visit.id);
 
-  // 13. Deletion zeroes the default range, preserves enabled config, and refresh stays empty.
+  // 12. Deletion zeroes the default range, preserves enabled config, and refresh stays empty.
   await harness.deleteHistory(site.id);
   report = await harness.getReport(site.id, { selectedDateKey: "2026-08-31" });
   assert.deepEqual(reportTotals(report), { openCount: 0, activeMs: 0 });
@@ -177,7 +171,7 @@ test("proves the complete WebTrace V1 visit lifecycle through real production bo
   await harness.navigate(1, "https://www.zhihu.com/question/4");
   assert.equal((await harness.getVisits(site.id)).length, 0);
 
-  // 14. Only a post-deletion leave-and-return creates one fresh visit.
+  // 13. Only a post-deletion leave-and-return creates one fresh visit.
   await harness.navigate(1, "https://example.org/fresh");
   harness.advanceTo(startedAt + 30_000);
   await harness.navigate(1, "https://www.zhihu.com/question/5");

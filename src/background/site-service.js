@@ -76,25 +76,18 @@ export function createSiteService({ siteRepository, tracker, clock, idFactory })
       });
     },
 
-    setSiteEnabled({ siteId, enabled }) {
+    migrateDisabledSites() {
       return enqueue(async () => {
         const sites = await siteRepository.list();
-        const index = sites.findIndex(site => site.id === siteId);
-        if (index === -1) {
-          throw serviceError("SITE_NOT_FOUND");
-        }
-        if (sites[index].enabled === enabled) {
-          return copy(sites[index]);
+        if (sites.every(site => site.enabled === true)) {
+          return copy(sites);
         }
 
+        const nextSites = sites.map(site => ({ ...site, enabled: true }));
         const at = clock.now();
-        const updatedSite = { ...sites[index], enabled };
-        const nextSites = sites.map((site, siteIndex) => (
-          siteIndex === index ? updatedSite : site
-        ));
         await siteRepository.replace(copy(nextSites));
         await synchronizeSavedSites(nextSites, at);
-        return copy(updatedSite);
+        return copy(nextSites);
       });
     },
 

@@ -130,9 +130,6 @@ const tracker = createTracker({
   reportError,
 });
 
-export const backgroundReady = tracker.ready;
-backgroundReady.catch(() => {});
-
 const siteService = createSiteService({
   siteRepository,
   tracker,
@@ -140,10 +137,16 @@ const siteService = createSiteService({
   idFactory,
 });
 
+export const backgroundReady = tracker.ready.then(() => (
+  siteService.migrateDisabledSites()
+));
+backgroundReady.catch(() => {});
+
 registerChromeEvents({
   chrome: chromeApi,
   tracker,
   siteService,
   clock,
+  lifecycleReady: backgroundReady,
   reportError,
 });

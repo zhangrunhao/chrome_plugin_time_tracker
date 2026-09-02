@@ -4,7 +4,6 @@ import { createAnalysisDataSource } from "../src/analysis/data-source.js";
 import {
   WEBTRACE_ADD_SITE,
   WEBTRACE_DELETE_SITE_HISTORY,
-  WEBTRACE_SET_SITE_ENABLED,
 } from "../src/shared/protocol.js";
 
 function copy(value) {
@@ -87,7 +86,6 @@ test("sends exact management commands and rejects a stable background error", as
     now: new Date(2026, 8, 2, 12).getTime(),
     responses: [
       { ok: true, data: { id: "s2" } },
-      { ok: true, data: { id: "s1", enabled: false } },
       {
         ok: false,
         error: {
@@ -99,7 +97,6 @@ test("sends exact management commands and rejects a stable background error", as
   });
 
   await harness.dataSource.addSite({ name: "B 站", input: "bilibili.com" });
-  await harness.dataSource.setSiteEnabled("s1", false);
   await assert.rejects(harness.dataSource.deleteSiteHistory("s1"), error => {
     assert.equal(error.code, "DELETE_HISTORY_FAILED");
     assert.equal(error.message, "删除历史失败，请重试");
@@ -107,7 +104,7 @@ test("sends exact management commands and rejects a stable background error", as
   });
   assert.deepEqual(harness.sentMessages, [
     { type: WEBTRACE_ADD_SITE, name: "B 站", input: "bilibili.com" },
-    { type: WEBTRACE_SET_SITE_ENABLED, siteId: "s1", enabled: false },
     { type: WEBTRACE_DELETE_SITE_HISTORY, siteId: "s1" },
   ]);
+  assert.equal("setSiteEnabled" in harness.dataSource, false);
 });
