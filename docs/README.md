@@ -11,7 +11,7 @@
 
 ## 当前 Change
 
-当前没有进行中的 Change。
+- [`2026-09-02-webtrace-v1-1-spec.md`](changes/2026-09-02-webtrace-v1-1-spec.md)：WebTrace V1.1 分析页、日期范围、折线图与持续统计规格，待评审。
 
 ## 最近完成
 
