@@ -68,14 +68,22 @@ export function createTrackingRepository(database) {
       const transaction = database.transaction("visits", "readonly");
       const completion = transactionCompletion(transaction);
       const visits = transaction.objectStore("visits");
-      const [openedInRange, activeInRange] = await Promise.all([
+      const [openedInRange, activeAfterStart] = await Promise.all([
         queryIndex(visits.index("bySiteOpenedAt"), siteId, rangeStart, rangeEnd),
-        queryIndex(visits.index("bySiteLastActivityAt"), siteId, rangeStart, rangeEnd),
+        queryIndex(
+          visits.index("bySiteLastActivityAt"),
+          siteId,
+          rangeStart,
+          Number.MAX_SAFE_INTEGER,
+        ),
         completion,
       ]);
 
       const byId = new Map();
-      for (const item of [...openedInRange, ...activeInRange]) {
+      for (const item of [
+        ...openedInRange,
+        ...activeAfterStart.filter(visit => visit.openedAt < rangeEnd),
+      ]) {
         byId.set(item.id, item);
       }
       return [...byId.values()];

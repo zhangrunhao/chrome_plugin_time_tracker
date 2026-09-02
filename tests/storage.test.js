@@ -101,22 +101,25 @@ test("lists only visits whose endedAt is null", async () => {
   assert.deepEqual(await repository.listOpenVisits(), [openVisit]);
 });
 
-test("queries the union of opened and active ranges with inclusive-lower exclusive-upper bounds", async () => {
+test("queries every possible window overlap and excludes future-only visits", async () => {
   const repository = await makeTrackingRepository();
-  const rangeStart = 200;
-  const rangeEnd = 500;
   const records = [
-    visitWith("opened-inside", { siteId: "s1", openedAt: 200, lastActivityAt: 300 }),
-    visitWith("active-inside", { siteId: "s1", openedAt: 100, lastActivityAt: 400 }),
-    visitWith("active-outside", { siteId: "s1", openedAt: 100, lastActivityAt: 199 }),
-    visitWith("upper-bound", { siteId: "s1", openedAt: 500, lastActivityAt: 500 }),
-    visitWith("other-site", { siteId: "s2", openedAt: 300, lastActivityAt: 300 }),
+    visitWith("opened-inside", { openedAt: 200, lastActivityAt: 300 }),
+    visitWith("active-inside", { openedAt: 100, lastActivityAt: 400 }),
+    visitWith("spans-beyond", { openedAt: 100, lastActivityAt: 800 }),
+    visitWith("ended-before", { openedAt: 100, lastActivityAt: 199 }),
+    visitWith("future-only", { openedAt: 500, lastActivityAt: 800 }),
+    visitWith("other-site", { siteId: "s2", openedAt: 300, lastActivityAt: 400 }),
   ];
   await repository.commit({ putVisits: records, deleteSiteIds: [], checkpoint });
 
-  const result = await repository.queryVisitsForReport("s1", rangeStart, rangeEnd);
+  const result = await repository.queryVisitsForReport("s1", 200, 500);
 
-  assert.deepEqual(result.map(item => item.id).sort(), ["active-inside", "opened-inside"]);
+  assert.deepEqual(result.map(item => item.id).sort(), [
+    "active-inside",
+    "opened-inside",
+    "spans-beyond",
+  ]);
   assert.equal(new Set(result.map(item => item.id)).size, result.length);
 });
 
