@@ -1,32 +1,15 @@
 import { getVisitDurationMs } from "./visit-time.js";
+import {
+  getRollingDateRange,
+  localDateKey,
+  resolveDateRange,
+} from "./local-date-range.js";
 
-export function localDateKey(at) {
-  const date = new Date(at);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function localDayStart(at) {
-  const date = new Date(at);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
+export { localDateKey } from "./local-date-range.js";
 
 export function getSevenDayWindow(now) {
-  const today = new Date(now);
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6 + index);
-    const startedAt = date.getTime();
-    const endedAt = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
-    return { dateKey: localDateKey(startedAt), startedAt, endedAt };
-  });
-
-  return {
-    startAt: days[0].startedAt,
-    endAt: days.at(-1).endedAt,
-    days,
-  };
+  const range = getRollingDateRange(now, 7);
+  return resolveDateRange({ ...range, todayDateKey: localDateKey(now) });
 }
 
 export function splitIntervalByLocalDay(startedAt, endedAt) {
@@ -53,8 +36,7 @@ function effectiveIntervalEnd(interval, visit, now) {
     : interval.endedAt;
 }
 
-export function aggregateSevenDayReport(visits, { now, selectedDateKey }) {
-  const window = getSevenDayWindow(now);
+function aggregateDays(visits, window, now) {
   const dayByKey = new Map(
     window.days.map(day => [day.dateKey, { dateKey: day.dateKey, openCount: 0, activeMs: 0 }]),
   );
@@ -82,15 +64,11 @@ export function aggregateSevenDayReport(visits, { now, selectedDateKey }) {
     }
   }
 
-  const days = window.days.map(day => dayByKey.get(day.dateKey));
-  const totals = days.reduce(
-    (result, day) => ({
-      openCount: result.openCount + day.openCount,
-      activeMs: result.activeMs + day.activeMs,
-    }),
-    { openCount: 0, activeMs: 0 },
-  );
-  const details = visits
+  return window.days.map(day => dayByKey.get(day.dateKey));
+}
+
+function selectedDetails(visits, selectedDateKey, now) {
+  return visits
     .filter(visit => localDateKey(visit.openedAt) === selectedDateKey)
     .sort((left, right) => right.openedAt - left.openedAt)
     .map(visit => ({
@@ -100,6 +78,55 @@ export function aggregateSevenDayReport(visits, { now, selectedDateKey }) {
       durationMs: getVisitDurationMs(visit, { asOf: now }),
       ongoing: visit.endedAt === null,
     }));
+}
 
-  return { days, totals, selectedDateKey, details };
+export function aggregateReport(
+  { rangeVisits, todayVisits },
+  { now, rangeWindow, todayWindow, selectedDateKey },
+) {
+  const days = aggregateDays(rangeVisits, rangeWindow, now);
+  const [today] = aggregateDays(todayVisits, todayWindow, now);
+
+  return {
+    range: {
+      startDateKey: rangeWindow.startDateKey,
+      endDateKey: rangeWindow.endDateKey,
+    },
+    todaySummary: { openCount: today.openCount, activeMs: today.activeMs },
+    days,
+    selectedDateKey,
+    details: selectedDetails(rangeVisits, selectedDateKey, now),
+  };
+}
+
+export function aggregateSevenDayReport(visits, { now, selectedDateKey }) {
+  const rangeWindow = getSevenDayWindow(now);
+  const todayRange = getRollingDateRange(now, 1);
+  const todayWindow = resolveDateRange({
+    ...todayRange,
+    todayDateKey: localDateKey(now),
+  });
+  const report = aggregateReport({
+    rangeVisits: visits,
+    todayVisits: visits,
+  }, {
+    now,
+    rangeWindow,
+    todayWindow,
+    selectedDateKey,
+  });
+  const totals = report.days.reduce(
+    (result, day) => ({
+      openCount: result.openCount + day.openCount,
+      activeMs: result.activeMs + day.activeMs,
+    }),
+    { openCount: 0, activeMs: 0 },
+  );
+
+  return {
+    days: report.days,
+    totals,
+    selectedDateKey: report.selectedDateKey,
+    details: report.details,
+  };
 }

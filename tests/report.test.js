@@ -1,11 +1,58 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  aggregateReport,
   aggregateSevenDayReport,
   getSevenDayWindow,
   localDateKey,
   splitIntervalByLocalDay,
 } from "../src/domain/report.js";
+import { resolveDateRange } from "../src/domain/local-date-range.js";
+
+function visitAt(id, openedAt, durationMs) {
+  const endedAt = openedAt + durationMs;
+  return {
+    id,
+    siteId: "s1",
+    openedAt,
+    endedAt,
+    activeIntervals: [{ startedAt: openedAt, endedAt }],
+    lastConfirmedAt: endedAt,
+    lastActivityAt: endedAt,
+  };
+}
+
+test("returns range days and an independent today summary", () => {
+  const now = new Date(2026, 8, 2, 12).getTime();
+  const rangeWindow = resolveDateRange({
+    startDateKey: "2026-08-01",
+    endDateKey: "2026-08-02",
+    todayDateKey: "2026-09-02",
+  });
+  const todayWindow = resolveDateRange({
+    startDateKey: "2026-09-02",
+    endDateKey: "2026-09-02",
+    todayDateKey: "2026-09-02",
+  });
+  const report = aggregateReport({
+    rangeVisits: [visitAt("historical", new Date(2026, 7, 1, 9).getTime(), 5_000)],
+    todayVisits: [visitAt("today", new Date(2026, 8, 2, 10).getTime(), 7_000)],
+  }, {
+    now,
+    rangeWindow,
+    todayWindow,
+    selectedDateKey: "2026-08-02",
+  });
+
+  assert.deepEqual(report.range, {
+    startDateKey: "2026-08-01",
+    endDateKey: "2026-08-02",
+  });
+  assert.deepEqual(report.todaySummary, { openCount: 1, activeMs: 7_000 });
+  assert.deepEqual(report.days.map(day => day.openCount), [1, 0]);
+  assert.deepEqual(report.details, []);
+  assert.equal("totals" in report, false);
+});
 
 test("splits duration at local midnight but keeps the open on openedAt day", () => {
   const openedAt = new Date(2026, 7, 30, 23, 59, 50).getTime();
