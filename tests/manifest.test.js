@@ -6,6 +6,7 @@ test("declares only the runtime permissions and HTTP(S) content injection", asyn
   const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 
   assert.equal(manifest.name, "WebTrace");
+  assert.equal(manifest.version, "1.1.0");
   assert.equal(manifest.minimum_chrome_version, "102");
   assert.deepEqual(
     [...manifest.permissions].sort(),
