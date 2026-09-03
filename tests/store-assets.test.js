@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
+import { normalizeSiteInput } from "../src/domain/site-domain.js";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -47,4 +48,14 @@ test("ships Chrome Web Store artwork at the required dimensions", async () => {
   assert.match(notes, /纯合成数据/);
   assert.match(notes, /隔离 Chrome 配置/);
   assert.match(notes, /2026-09-03/);
+});
+
+test("store reviewer instructions use a domain the extension accepts", async () => {
+  const guide = await readFile("docs/current/store-publishing.md", "utf8");
+  const instructions = guide.match(/### Test instructions\n\n```text\n([\s\S]*?)```/)?.[1];
+
+  assert.ok(instructions, "store test instructions must be present");
+  assert.match(instructions, /wikipedia\.org/);
+  assert.doesNotMatch(instructions, /example\.(?:com|net|org)/);
+  assert.equal(normalizeSiteInput("wikipedia.org").domain, "wikipedia.org");
 });

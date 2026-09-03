@@ -361,7 +361,7 @@ Host access（http://*/* 与 https://*/*）：用于在用户主动配置的网�
 Test instructions 使用：
 
 ```text
-WebTrace 不需要账号、付费或测试凭据。安装后点击工具栏图标，打开“管理网站”，阅读并勾选本地数据处理确认，添加 example.com。随后从其他网站进入 https://example.com/，再返回 WebTrace，即可查看打开次数、有效时长和访问明细。全部数据保存在本机。
+WebTrace 不需要账号、付费或测试凭据。安装后点击工具栏图标，打开“管理网站”，阅读并勾选本地数据处理确认，添加 wikipedia.org。随后从其他网站进入 https://www.wikipedia.org/，再返回 WebTrace，即可查看打开次数、有效时长和访问明细。全部数据保存在本机。
 ```
 
 - [ ] **Step 3: 写打包和提交顺序**

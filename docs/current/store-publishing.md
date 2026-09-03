@@ -126,7 +126,7 @@ WebTrace 只记录你主动配置的网站名称和主域名、打开与结束�
 ### Test instructions
 
 ```text
-WebTrace 不需要账号、付费或测试凭据。安装后点击工具栏图标，打开“管理网站”，阅读并勾选本地数据处理确认，添加 example.com。随后从其他网站进入 https://example.com/，再返回 WebTrace，即可查看打开次数、有效时长和访问明细。全部数据保存在本机。
+WebTrace 不需要账号、付费或测试凭据。安装后点击工具栏图标，打开“管理网站”，阅读并勾选本地数据处理确认，添加 wikipedia.org。随后从其他网站进入 https://www.wikipedia.org/，再返回 WebTrace，即可查看打开次数、有效时长和访问明细。全部数据保存在本机。
 ```
 
 ## 打包与审计
