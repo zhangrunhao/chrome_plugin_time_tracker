@@ -12,6 +12,7 @@
 ## 当前 Change
 
 - [`2026-09-03-webtrace-store-release-spec.md`](changes/2026-09-03-webtrace-store-release-spec.md)：WebTrace 商店发布准备、公开页面、隐私披露与品牌素材规格。
+- [`2026-09-03-webtrace-store-release-plan.md`](changes/2026-09-03-webtrace-store-release-plan.md)：WebTrace 扩展、品牌素材、发布资料、打包与验证计划。
 
 ## 最近完成
 
