@@ -31,3 +31,20 @@ test("ships the exact WebTrace icon sizes used by the manifest", async () => {
 
   await assert.rejects(stat("images/icon_64.png"), error => error?.code === "ENOENT");
 });
+
+test("ships Chrome Web Store artwork at the required dimensions", async () => {
+  const assets = new Map([
+    ["store-assets/screenshots/01-dashboard-1280x800.png", [1280, 800]],
+    ["store-assets/screenshots/02-add-site-1280x800.png", [1280, 800]],
+    ["store-assets/promo/small-promo-440x280.png", [440, 280]],
+  ]);
+
+  for (const [path, [width, height]] of assets) {
+    assert.deepEqual(await readPngDimensions(path), { width, height });
+  }
+
+  const notes = await readFile("store-assets/README.md", "utf8");
+  assert.match(notes, /纯合成数据/);
+  assert.match(notes, /隔离 Chrome 配置/);
+  assert.match(notes, /2026-09-03/);
+});
