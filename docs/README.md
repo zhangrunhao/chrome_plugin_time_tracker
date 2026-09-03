@@ -6,6 +6,7 @@
 
 - [`current`](current/)：当前仍然有效的事实、决定、风险和限制。
   - [`project.md`](current/project.md)：当前功能、实现结构、数据行为、限制与验证状态；不包含未来方案和历史过程。
+  - [`store-publishing.md`](current/store-publishing.md)：Chrome Web Store 可复制字段、权限理由、隐私实践、上传包与提交步骤。
 - [`changes`](changes/)：尚未结束的 spec 和 plan，使用扁平目录。
 - [`archive`](archive/)：已结束或被替代的材料，按文件名日期放入 `YYYY-MM` 月份目录。
 

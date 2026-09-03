@@ -1,8 +1,8 @@
 # 项目当前状态
 
-> 最后核验：2026-09-02（Asia/Shanghai）
+> 最后核验：2026-09-03（Asia/Shanghai）
 
-当前仓库已实现 WebTrace V1.1：用户可以配置多个网站，在本机记录有效打开和有效观看时长，并在分析页查看今日概览、固定最近 14 个本地日的折线趋势和选中日期的逐次访问明细。左侧网站列表按保存顺序显示，支持长按拖动排序并保存。当次自动验证为 142/142；Chrome 已完成扩展重新加载和分析页烟测，排序手势的完整手工验收尚未执行。
+当前仓库已实现 WebTrace V1.1：用户可以配置多个网站，在本机记录有效打开和有效观看时长，并在分析页查看今日概览、固定最近 14 个本地日的折线趋势和选中日期的逐次访问明细。左侧网站列表按保存顺序显示，支持长按拖动排序并保存。添加网站前现已显著披露本地数据处理并要求主动确认。商店图标、截图、宣传图、发布字段和本地上传包已准备，但官网页面尚待公开核验，Chrome Web Store 尚未上传或提交。当次自动验证为 147/147。
 
 ## 内容边界
 
@@ -15,12 +15,14 @@
 - 扩展名称为 WebTrace，版本 `1.1.0`，采用 Chrome Manifest V3，最低 Chrome 版本为 102。
 - 后台入口是模块型 service worker `background.js`；网页侧 `content.js` 只注入 HTTP/HTTPS 页面，不创建浮窗或其他可见 UI。
 - 权限为 `idle`、`storage`、`unlimitedStorage` 和 `webNavigation`；主机访问范围为 `http://*/*` 与 `https://*/*`，与 V1 相同。
+- manifest 提供 16、32、48、128 四种森林绿与暖象牙色品牌图标；128px 图标四周保留约 16px 透明边距。
 - 扩展不申请 `tabs` 权限。工具栏图标打开或聚焦分析页；分析页用 `chrome.storage.session` 注册自身，关闭或导航离开时清除记录。
 - `chrome.storage.local` 和 `chrome.storage.session` 在后台初始化时限制为 `TRUSTED_CONTEXTS`。
 
 ### 网站配置与持续统计
 
 - 用户可以输入网站名称、域名或 HTTP/HTTPS 页面 URL；随扩展提供的 `tldts@7.4.11` 把输入离线归一化为可注册主域名。
+- 添加网站表单显著说明记录的网站名称、主域名、打开/结束时间与有效观看区间，明确本地存储、用途、长期保留、删除方式和不上传/不共享规则，并链接公开隐私政策。确认框默认未选中；未确认时不会调用后台添加命令，成功添加后才清空表单。
 - 一个配置匹配其主域名和全部子域名，不匹配仅字符串后缀相同的其他域名；无效地址、非 HTTP/HTTPS 地址、不可注册域名和重复域名会被拒绝。
 - 左侧列表直接采用 `webtraceSitesV1` 数组顺序。鼠标可长按网站后拖动；触摸或笔输入从右侧把手长按拖动，以保留窄屏列表正文的原生横向滚动。
 - 释放发生顺序变化的拖动后，分析页乐观更新并向受信任后台发送完整网站 ID 顺序。后台串行校验它是当前配置的精确排列后替换原数组，不改变网站字段和采集状态；取消或保存失败时重新采用权威存储顺序。
@@ -57,6 +59,14 @@
 - 运行时代码不调用 `fetch`、`XMLHttpRequest`、`WebSocket` 或 `EventSource`，不加载远程资源，不保存完整 URL、路径、查询参数或网页标题。
 - 访问记录默认长期保留。最近 14 天以前的数据仍在本地存储，当前分析页不查询或展示。
 
+### 商店发布材料
+
+- `store-assets/` 包含两张由真实扩展页面生成的 1280×800 截图和一张 440×280 宣传图；截图只使用 `github.com`、`developer.mozilla.org`、`wikipedia.org` 等合成配置与合成访问时间。
+- `npm run capture:store` 使用 Playwright 自带 Chromium 和临时隔离 profile 重现截图，结束后删除 profile；不读取日常 Chrome 数据。
+- `npm run render:icons` 从可审查的平面母版重现四种图标；宣传图母版由内置 ImageGen 生成，最终素材保存在仓库。
+- [`store-publishing.md`](store-publishing.md) 是商店标题、摘要、详细描述、分类、语言、单一用途、权限理由、隐私实践、URL、测试说明和提交步骤的当前来源。
+- 本机已生成 `release/webtrace-1.1.0.zip`，大小约 100 KiB，SHA-256 为 `a754b84f989382b6e28de0df0c2054427335bc648db86cb5b7e50b8dbb247e74`。包只含运行入口、`src`、`vendor` 和四种图标，`release/` 由 Git 忽略。
+
 ## 有效决定
 
 - 分析页固定展示滚动最近 14 个本地日，不提供日期范围控件；超过 14 天的查看能力留给未来独立变更。
@@ -64,6 +74,8 @@
 - 当前 HTTP/HTTPS 全主机权限和 `webNavigation` 继续使用并接受相应商店审核风险；只有实际 Chrome Web Store 审核因此失败时，才建立独立 Change 设计按网站授权或更小权限方案。
 - 为实现长期本地保留，继续使用 `unlimitedStorage`；它只服务于扩展 IndexedDB 记录，不用于缓存网页内容。
 - 为避免引入隐私范围更大的 `tabs` 权限，分析页继续使用 session 范围的标签注册实现复用。
+- 产品名称继续使用 `WebTrace`；`TimeTracker` 不作为商店名称、官网路径或素材品牌。
+- Chrome Web Store 的创建、上传和 `Submit for Review` 保留为人工外部操作；准备材料或部署官网不能表述为已经上架。
 
 ## 当前限制与风险
 
@@ -74,13 +86,14 @@
 - session 标签注册防止正常工具栏操作产生重复分析页，但不会主动关闭用户手工创建的既有重复分析页。
 - 网站排序目前只支持鼠标、触摸或笔等指针操作，没有键盘排序入口；拖动靠近窄屏横向列表边缘时不会自动滚动，需先滚到目标区间再排序。
 - 已收到的顶层非 HTTP/HTTPS 导航会被视为离开统计网站；Chrome 未向当前权限组合暴露的受限内部页导航仍属于平台边界。
+- `https://zhangrh.shop/webtrace/`、`/support` 和 `/privacy` 尚待部署与无登录公开核验；Developer Dashboard 尚未创建条目、上传 ZIP 或提交审核。
 - 本次 Chrome 版本来自本机应用 bundle，而不是从 `chrome://version` 页面读取。
 
 ## 验证证据
 
 ### 自动验证
 
-2026-09-02 在当前代码运行：
+2026-09-03 在当前代码运行：
 
 ```sh
 npm test
@@ -94,10 +107,12 @@ rg -n "(src|href)=['\"]https?://" analysis.html
 node --test tests/manifest.test.js
 ```
 
-- `npm test`：142/142 通过；新增覆盖保存顺序为权威顺序、纵向鼠标拖动、横向触摸把手拖动、取消恢复、完整排列校验、后台消息边界、失败后重载和报表刷新期间列表节点稳定。
+- `npm test`：147/147 通过；在既有覆盖上新增采集告知、必选确认、失败保留草稿、四种图标尺寸和三张商店图片尺寸检查。
 - 全部 JavaScript、后台/内容入口和 manifest JSON 检查通过。
 - 隐私网络调用和远程页面资源扫描均无匹配；`rg` 因无匹配返回 1，结果符合预期。`git diff --check` 通过。
 - manifest 测试确认版本 `1.1.0`，权限和 HTTP/HTTPS 内容脚本范围与 V1 相同。
+- `npm run capture:store` 在 Playwright Chromium `151.0.7922.34` 的临时隔离 profile 中载入真实扩展并成功生成两张截图，页面控制台和脚本无错误；这是自动化浏览器验证，不记作人工 Chrome 验收。
+- 上传 ZIP 已解压到临时目录复核：manifest 可解析，后台和内容入口通过语法检查，全部 manifest 入口存在，清单不含开发文件或秘密。
 
 ### Chrome 验收
 
@@ -106,7 +121,7 @@ node --test tests/manifest.test.js
 - 用户确认覆盖：日期选择已移除、趋势固定为最近 14 天、今日概览正常、图表点选择正常、访问明细按选中日期展示。
 - 当次改动后，Agent 在同一 Chrome 中重新加载现有未打包扩展并打开分析页，确认页面可显示已有网站列表、今日概览、趋势和访问明细。
 - 浏览器语义控制工具的安全策略拒绝操作 `chrome-extension://` 页面，因此没有完成长按激活、拖动反馈和刷新后顺序保持的手工验收；这些排序场景目前由自动测试覆盖，未表述成手工通过。
-- V1 打开、计时、恢复、分析页复用和权限范围由既有 Chrome 证据与当次 142 项自动回归共同覆盖。
+- V1 打开、计时、恢复、分析页复用和权限范围由既有 Chrome 证据与当次 147 项自动回归共同覆盖。
 
 ## 证据入口
 
@@ -115,3 +130,4 @@ node --test tests/manifest.test.js
 - 本地数据库：[`webtrace-db.js`](../../src/storage/webtrace-db.js)、[`tracking-repository.js`](../../src/storage/tracking-repository.js)
 - 分析页：[`analysis.html`](../../analysis.html)、[`controller.js`](../../src/analysis/controller.js)、[`view.js`](../../src/analysis/view.js)、[`site-reorder.js`](../../src/analysis/site-reorder.js)
 - 自动验收：[`webtrace-flow.test.js`](../../tests/webtrace-flow.test.js)、[`chrome-events.test.js`](../../tests/chrome-events.test.js)、[`analysis-view.test.js`](../../tests/analysis-view.test.js)
+- 商店资料与素材：[`store-publishing.md`](store-publishing.md)、[`store-assets/README.md`](../../store-assets/README.md)、[`store-assets.test.js`](../../tests/store-assets.test.js)
