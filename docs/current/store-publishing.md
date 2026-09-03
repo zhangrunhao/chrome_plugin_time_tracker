@@ -2,7 +2,7 @@
 
 > 最后核验：2026-09-03（Asia/Shanghai）
 
-WebTrace 的扩展代码、隐私确认、商店图片和 `1.1.0` 上传包已经准备。三个 `zhangrh.shop` 页面尚待部署后公开核验；Chrome Web Store Developer Dashboard 尚未创建条目、上传或提交审核。本文中的“已准备”不表示已经上架。
+WebTrace 的扩展代码、隐私确认、商店图片和 `1.1.0` 上传包已经准备，三个 `zhangrh.shop` 页面也已部署并完成公开核验。Chrome Web Store Developer Dashboard 尚未创建条目、上传或提交审核；本文中的“已准备”不表示已经上架。
 
 ## 当前状态
 
@@ -13,7 +13,7 @@ WebTrace 的扩展代码、隐私确认、商店图片和 `1.1.0` 上传包已�
 | 16/32/48/128 图标 | 已准备 | `images/` 和 `store-assets/source/` |
 | 1280×800 截图与 440×280 宣传图 | 已准备 | `store-assets/`，只含真实界面与合成数据 |
 | 待上传 ZIP | 已准备、本机生成 | `release/webtrace-1.1.0.zip`，由 Git 忽略 |
-| 主页、支持、隐私 URL | 待公开核验 | 部署后更新本表 |
+| 主页、支持、隐私 URL | 已部署并公开核验 | 2026-09-03 无登录浏览器检查均为 HTTPS 200；站点实现 revision `0c83897`，文档收口 revision `59c649f` |
 | Developer Dashboard | 尚未操作 | 尚未创建、上传或提交审核 |
 
 ## Store Listing 可复制字段
@@ -27,8 +27,8 @@ WebTrace 的扩展代码、隐私确认、商店图片和 `1.1.0` 上传包已�
 - 分发区域：全部可用地区
 - 成人内容：`No`
 - 主页：`https://zhangrh.shop/webtrace/`
-- 支持：`https://zhangrh.shop/webtrace/support`
-- 隐私政策：`https://zhangrh.shop/webtrace/privacy`
+- 支持：`https://zhangrh.shop/webtrace/support/`
+- 隐私政策：`https://zhangrh.shop/webtrace/privacy/`
 - 官方网址：若 `zhangrh.shop` 已在 Search Console 验证，则选择该域名；否则暂留空，不要填写未验证域名。
 
 详细描述：
@@ -163,12 +163,12 @@ unzip -Z1 release/webtrace-1.1.0.zip | sort
 
 ## 提交前最终清单
 
-- [ ] 三个公开 URL 已在无登录窗口验证。
-- [ ] ZIP 清单和解压后语法检查通过。
-- [ ] 名称始终为 WebTrace，摘要与 manifest 一致。
+- [x] 三个公开 URL 已在无登录窗口验证。
+- [x] ZIP 清单和解压后语法检查通过。
+- [x] 名称始终为 WebTrace，摘要与 manifest 一致。
 - [ ] 128px 图标、两张截图和 440×280 宣传图上传成功。
 - [ ] 单一用途、五类权限理由、Remote code 和数据类别填写完成。
-- [ ] 隐私政策与扩展内显著告知一致。
+- [x] 隐私政策与扩展内显著告知一致。
 - [ ] Distribution 与 Test instructions 已保存。
 - [ ] 已决定自动发布或延迟发布。
 - [ ] 只有在人工复核后才点击 Submit for Review。

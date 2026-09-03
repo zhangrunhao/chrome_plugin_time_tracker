@@ -12,11 +12,12 @@
 
 ## 当前 Change
 
-- [`2026-09-03-webtrace-store-release-spec.md`](changes/2026-09-03-webtrace-store-release-spec.md)：WebTrace 商店发布准备、公开页面、隐私披露与品牌素材规格。
-- [`2026-09-03-webtrace-store-release-plan.md`](changes/2026-09-03-webtrace-store-release-plan.md)：WebTrace 扩展、品牌素材、发布资料、打包与验证计划。
+- 当前没有进行中的 Change。
 
 ## 最近完成
 
+- [`2026-09-03-webtrace-store-release-spec.md`](archive/2026-09/2026-09-03-webtrace-store-release-spec.md)：已完成的 WebTrace 商店发布准备、公开页面、隐私披露与品牌素材规格。
+- [`2026-09-03-webtrace-store-release-plan.md`](archive/2026-09/2026-09-03-webtrace-store-release-plan.md)：已执行并归档的 WebTrace 扩展、品牌素材、发布资料、打包与验证计划。
 - [`2026-09-02-webtrace-v1-1-spec.md`](archive/2026-09/2026-09-02-webtrace-v1-1-spec.md)：已完成的 WebTrace V1.1 固定 14 日分析页、折线图与持续统计规格。
 - [`2026-09-02-webtrace-v1-1-plan.md`](archive/2026-09/2026-09-02-webtrace-v1-1-plan.md)：已执行并归档的 WebTrace V1.1 实施与验证计划。
 - [`2026-08-31-webtrace-v1-spec.md`](archive/2026-08/2026-08-31-webtrace-v1-spec.md)：已完成的 WebTrace V1 网站使用统计规格。
