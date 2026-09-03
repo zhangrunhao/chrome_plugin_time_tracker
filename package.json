@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "render:icons": "node scripts/render-store-icons.mjs",
     "vendor:tldts": "node scripts/vendor-tldts.mjs"
   },
   "devDependencies": {

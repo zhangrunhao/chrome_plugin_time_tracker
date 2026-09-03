@@ -23,5 +23,11 @@ test("declares only the runtime permissions and HTTP(S) content injection", asyn
     service_worker: "background.js",
     type: "module",
   });
+  assert.deepEqual(manifest.icons, {
+    "16": "images/icon_16.png",
+    "32": "images/icon_32.png",
+    "48": "images/icon_48.png",
+    "128": "images/icon_128.png",
+  });
   assert.equal("default_popup" in manifest.action, false);
 });
