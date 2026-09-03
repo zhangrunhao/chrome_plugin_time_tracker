@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WebTrace",
   "version": "1.1.0",
-  "description": "WebTrace 在本地记录已配置网站的打开次数与有效观看时长",
+  "description": "WebTrace 在本机统计你配置的网站打开次数与有效观看时长，并展示最近 14 天趋势和访问明细。",
   "minimum_chrome_version": "102",
   "permissions": ["idle", "storage", "unlimitedStorage", "webNavigation"],
   "host_permissions": ["http://*/*", "https://*/*"],
