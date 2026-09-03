@@ -32,6 +32,9 @@ class FakeElement {
     this.type = "";
     this.name = "";
     this.value = "";
+    this.checked = false;
+    this.validationMessage = "";
+    this.reportValidityCalls = 0;
     this.max = "";
     this._textContent = "";
   }
@@ -147,9 +150,22 @@ class FakeElement {
   reset() {
     for (const element of descendants(this)) {
       if (element.tagName === "INPUT") {
-        element.value = "";
+        if (element.type === "checkbox") {
+          element.checked = false;
+        } else {
+          element.value = "";
+        }
       }
     }
+  }
+
+  setCustomValidity(message) {
+    this.validationMessage = String(message);
+  }
+
+  reportValidity() {
+    this.reportValidityCalls += 1;
+    return this.validationMessage === "";
   }
 
   focus(options) {
@@ -651,16 +667,132 @@ test("keeps add fields required, reports errors, and disables pending controls",
 
   const dialog = document.elements.get("site-manager");
   const inputs = descendants(dialog).filter(element => element.tagName === "INPUT");
-  assert.equal(inputs.length, 2);
+  const textInputs = inputs.filter(input => input.type === "text");
+  const consent = inputs.find(input => input.name === "privacyConsent");
+  assert.equal(textInputs.length, 2);
+  assert.ok(consent);
   assert.ok(inputs.every(input => input.required));
-  inputs[0].value = "新站点";
-  inputs[1].value = "example.com";
+  textInputs[0].value = "新站点";
+  textInputs[1].value = "example.com";
+  consent.checked = true;
   const form = descendants(dialog).find(element => element.tagName === "FORM");
   await form.dispatch("submit");
   assert.deepEqual(calls, [{ name: "新站点", input: "example.com" }]);
   assert.ok(descendants(dialog).filter(element => element.tagName === "BUTTON").every(button => button.disabled));
   assert.equal(document.elements.get("error-banner").hidden, false);
   assert.equal(document.elements.get("error-banner").textContent, "该网站已经添加");
+});
+
+test("renders a required local-only privacy confirmation before adding a site", () => {
+  const document = createDocumentFake();
+  const view = createAnalysisView({ document });
+  bindNoopController(view);
+  view.render(viewModel());
+
+  const dialog = document.elements.get("site-manager");
+  const inputs = descendants(dialog).filter(element => element.tagName === "INPUT");
+  const consent = inputs.find(input => input.name === "privacyConsent");
+  const privacyLink = descendants(dialog).find(element => (
+    element.tagName === "A" && element.textContent === "查看完整隐私政策"
+  ));
+
+  assert.ok(consent);
+  assert.equal(consent.type, "checkbox");
+  assert.equal(consent.required, true);
+  assert.equal(consent.checked, false);
+  assert.ok(privacyLink);
+  assert.equal(
+    privacyLink.getAttribute("href"),
+    "https://zhangrh.shop/webtrace/privacy",
+  );
+  assert.match(
+    dialog.textContent,
+    /网站名称和主域名、打开时间、结束时间及有效观看时长/,
+  );
+  assert.match(
+    dialog.textContent,
+    /全部仅保存在当前 Chrome 配置文件的本机存储中/,
+  );
+  assert.match(
+    dialog.textContent,
+    /不保存完整 URL、路径、查询参数、页面标题、网页内容、输入内容或 Cookie/,
+  );
+  assert.match(
+    dialog.textContent,
+    /不上传、不出售、不用于广告，也不与第三方共享/,
+  );
+});
+
+test("blocks an unconfirmed site and resets consent only after a successful add", async () => {
+  const document = createDocumentFake();
+  const calls = [];
+  const view = createAnalysisView({ document });
+  bindNoopController(view, {
+    addSite(input) {
+      calls.push(copy(input));
+      return { id: "site-new" };
+    },
+  });
+  view.render(viewModel());
+
+  const dialog = document.elements.get("site-manager");
+  const form = descendants(dialog).find(element => element.tagName === "FORM");
+  const inputs = descendants(form).filter(element => element.tagName === "INPUT");
+  const textInputs = inputs.filter(input => input.type === "text");
+  const consent = inputs.find(input => input.name === "privacyConsent");
+  assert.ok(consent);
+  textInputs[0].value = "示例站点";
+  textInputs[1].value = "example.com";
+
+  await form.dispatch("submit");
+  assert.deepEqual(calls, []);
+  assert.equal(consent.reportValidityCalls, 1);
+  assert.match(consent.validationMessage, /请先确认/);
+
+  consent.checked = true;
+  await consent.dispatch("change");
+  await form.dispatch("submit");
+  assert.deepEqual(calls, [{ name: "示例站点", input: "example.com" }]);
+  assert.deepEqual(textInputs.map(input => input.value), ["", ""]);
+  assert.equal(consent.checked, false);
+});
+
+test("keeps the site draft and consent when adding the site fails", async () => {
+  const document = createDocumentFake();
+  const calls = [];
+  const view = createAnalysisView({ document });
+  bindNoopController(view, {
+    addSite(input) {
+      calls.push(copy(input));
+      view.render(viewModel({ model: { pending: true } }));
+      view.render(viewModel({ model: { pending: false } }));
+      return null;
+    },
+  });
+  view.render(viewModel());
+
+  const initialDialog = document.elements.get("site-manager");
+  const form = descendants(initialDialog).find(element => element.tagName === "FORM");
+  const inputs = descendants(form).filter(element => element.tagName === "INPUT");
+  const textInputs = inputs.filter(input => input.type === "text");
+  const consent = inputs.find(input => input.name === "privacyConsent");
+  assert.ok(consent);
+  textInputs[0].value = "失败站点";
+  textInputs[1].value = "example.com/path";
+  consent.checked = true;
+
+  await form.dispatch("submit");
+
+  const currentInputs = descendants(document.elements.get("site-manager"))
+    .filter(element => element.tagName === "INPUT");
+  const currentTextInputs = currentInputs.filter(input => input.type === "text");
+  const currentConsent = currentInputs.find(input => input.name === "privacyConsent");
+  assert.deepEqual(calls, [{ name: "失败站点", input: "example.com/path" }]);
+  assert.deepEqual(currentTextInputs.map(input => input.value), [
+    "失败站点",
+    "example.com/path",
+  ]);
+  assert.equal(currentConsent?.checked, true);
 });
 
 test("keeps an in-progress site form intact across report-only renders", () => {
@@ -670,7 +802,9 @@ test("keeps an in-progress site form intact across report-only renders", () => {
   const model = viewModel();
   view.render(model);
   const dialog = document.elements.get("site-manager");
-  const originalInputs = descendants(dialog).filter(element => element.tagName === "INPUT");
+  const originalInputs = descendants(dialog).filter(element => (
+    element.tagName === "INPUT" && element.type === "text"
+  ));
   originalInputs[0].value = "正在输入的网站";
   originalInputs[1].value = "example.com/path";
 
@@ -678,7 +812,9 @@ test("keeps an in-progress site form intact across report-only renders", () => {
     report: { todaySummary: { openCount: 9, activeMs: 9_000 } },
   }));
 
-  const currentInputs = descendants(dialog).filter(element => element.tagName === "INPUT");
+  const currentInputs = descendants(dialog).filter(element => (
+    element.tagName === "INPUT" && element.type === "text"
+  ));
   assert.equal(currentInputs[0], originalInputs[0]);
   assert.deepEqual(currentInputs.map(input => input.value), [
     "正在输入的网站",

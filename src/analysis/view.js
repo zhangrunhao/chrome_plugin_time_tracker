@@ -109,6 +109,12 @@ export function createAnalysisView({
   let siteReordering = null;
   let managerRenderKey = null;
   let dialogError = null;
+  let addSiteForm = null;
+  let addSiteDraft = {
+    name: "",
+    input: "",
+    privacyConsent: false,
+  };
 
   regions.manageSites.addEventListener("click", () => {
     if (!regions.siteManager.open) {
@@ -391,6 +397,7 @@ export function createAnalysisView({
     nameInput.type = "text";
     nameInput.name = "name";
     nameInput.required = true;
+    nameInput.value = addSiteDraft.name;
     nameInput.setAttribute("autocomplete", "off");
     nameLabel.append(nameInput);
     const inputLabel = element(document, "label", { text: "网址或域名" });
@@ -398,22 +405,98 @@ export function createAnalysisView({
     siteInput.type = "text";
     siteInput.name = "input";
     siteInput.required = true;
+    siteInput.value = addSiteDraft.input;
     siteInput.setAttribute("placeholder", "例如 zhihu.com");
     siteInput.setAttribute("autocomplete", "url");
     inputLabel.append(siteInput);
+
+    const disclosure = element(document, "section", {
+      className: "privacy-disclosure",
+    });
+    const disclosureHeading = element(document, "h3", {
+      text: "添加前请确认本地数据处理",
+    });
+    disclosureHeading.setAttribute("id", "privacy-disclosure-title");
+    disclosure.setAttribute("aria-labelledby", "privacy-disclosure-title");
+    const disclosureSummary = element(document, "p", {
+      text: "WebTrace 会记录你填写的网站名称和主域名、打开时间、结束时间及有效观看时长，用于展示打开次数、最近 14 天趋势和访问明细。",
+    });
+    const disclosureDetails = element(document, "ul");
+    for (const text of [
+      "全部仅保存在当前 Chrome 配置文件的本机存储中；记录默认长期保留，可按网站永久删除历史，卸载扩展会移除扩展本地数据。",
+      "不保存完整 URL、路径、查询参数、页面标题、网页内容、输入内容或 Cookie。",
+      "不上传、不出售、不用于广告，也不与第三方共享。",
+    ]) {
+      disclosureDetails.append(element(document, "li", { text }));
+    }
+    const privacyCopy = element(document, "p", { className: "privacy-link" });
+    const privacyLink = element(document, "a", { text: "查看完整隐私政策" });
+    privacyLink.setAttribute("href", "https://zhangrh.shop/webtrace/privacy");
+    privacyLink.setAttribute("target", "_blank");
+    privacyLink.setAttribute("rel", "noopener noreferrer");
+    privacyCopy.append(privacyLink);
+    disclosure.append(
+      disclosureHeading,
+      disclosureSummary,
+      disclosureDetails,
+      privacyCopy,
+    );
+
+    const consentLabel = element(document, "label", {
+      className: "privacy-consent",
+    });
+    const consentInput = element(document, "input");
+    consentInput.type = "checkbox";
+    consentInput.name = "privacyConsent";
+    consentInput.required = true;
+    consentInput.checked = addSiteDraft.privacyConsent;
+    consentInput.addEventListener("change", () => {
+      addSiteDraft.privacyConsent = consentInput.checked;
+      consentInput.setCustomValidity("");
+    });
+    consentLabel.append(
+      consentInput,
+      element(document, "span", {
+        text: "我已了解并同意 WebTrace 为提供统计功能，仅在本机记录上述数据。",
+      }),
+    );
+
     const submit = element(document, "button", { text: "添加网站" });
     submit.type = "submit";
     submit.disabled = model.pending;
     submit.dataset.action = "add-site";
-    form.append(nameLabel, inputLabel, submit);
+    form.append(
+      nameLabel,
+      inputLabel,
+      disclosure,
+      consentLabel,
+      submit,
+    );
+    addSiteForm = form;
     form.addEventListener("submit", async event => {
       event.preventDefault();
+      addSiteDraft = {
+        name: nameInput.value,
+        input: siteInput.value,
+        privacyConsent: consentInput.checked,
+      };
+      if (!consentInput.checked) {
+        consentInput.setCustomValidity("请先确认数据处理说明");
+        consentInput.reportValidity();
+        return;
+      }
+      consentInput.setCustomValidity("");
       const result = await controller?.addSite({
         name: nameInput.value,
         input: siteInput.value,
       });
       if (result !== null) {
-        form.reset();
+        addSiteDraft = {
+          name: "",
+          input: "",
+          privacyConsent: false,
+        };
+        addSiteForm?.reset();
       }
     });
 
