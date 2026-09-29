@@ -9,7 +9,7 @@ test("declares only the runtime permissions and HTTP(S) content injection", asyn
   assert.equal(manifest.version, "1.1.0");
   assert.equal(
     manifest.description,
-    "WebTrace 在本机统计你配置的网站打开次数与有效观看时长，并展示最近 14 天趋势和访问明细。",
+    "WebTrace 在本机统计你配置的网站打开次数与有效观看时长，提供可按周回看的 14 天双线趋势和访问明细。",
   );
   assert.equal(manifest.minimum_chrome_version, "102");
   assert.deepEqual(

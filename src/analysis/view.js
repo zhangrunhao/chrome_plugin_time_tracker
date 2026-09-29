@@ -333,7 +333,7 @@ export function createAnalysisView({
     disclosureHeading.setAttribute("id", "privacy-disclosure-title");
     disclosure.setAttribute("aria-labelledby", "privacy-disclosure-title");
     const disclosureSummary = element(document, "p", {
-      text: "WebTrace 会记录你填写的网站名称和主域名、打开时间、结束时间及有效观看时长，用于展示打开次数、最近 14 天趋势和访问明细。",
+      text: "WebTrace 会记录你填写的网站名称和主域名、打开时间、结束时间及有效观看时长，用于展示打开次数、有效时长趋势和访问明细。趋势默认展示最近 14 天，支持按周回看更早记录。",
     });
     const disclosureDetails = element(document, "ul");
     for (const text of [
