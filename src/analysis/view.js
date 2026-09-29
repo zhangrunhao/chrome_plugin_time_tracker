@@ -1,4 +1,5 @@
 import { attachLongPressSiteReorder } from "./site-reorder.js";
+import { createTrendChart } from "./trend-chart.js";
 
 function element(document, tagName, { className = "", text = null } = {}) {
   const node = document.createElement(tagName);
@@ -36,34 +37,6 @@ function formatLocalTime(at) {
   }).format(new Date(at));
 }
 
-function formatDateLabel(dateKey) {
-  const [, month, day] = dateKey.split("-");
-  return `${Number(month)}/${Number(day)}`;
-}
-
-function pointPosition(index, count, value, maximum) {
-  const x = count === 1 ? 50 : (index / (count - 1)) * 100;
-  const y = maximum === 0 ? 84 : 84 - (value / maximum) * 68;
-  return { x, y };
-}
-
-function visibleLabelIndexes(days, selectedDateKey) {
-  if (days.length <= 14) {
-    return new Set(days.map((_day, index) => index));
-  }
-
-  const indexes = new Set([0, days.length - 1]);
-  const selectedIndex = days.findIndex(day => day.dateKey === selectedDateKey);
-  if (selectedIndex !== -1) {
-    indexes.add(selectedIndex);
-  }
-  const step = Math.ceil(days.length / 10);
-  for (let index = 0; index < days.length; index += step) {
-    indexes.add(index);
-  }
-  return indexes;
-}
-
 function appendSummaryCard(document, container, label, value) {
   const card = element(document, "div", { className: "summary-card" });
   card.append(
@@ -97,13 +70,23 @@ export function createAnalysisView({
     siteList: requiredRegion(document, "site-list"),
     manageSites: requiredRegion(document, "manage-sites"),
     summary: requiredRegion(document, "summary"),
-    openChart: requiredRegion(document, "open-chart"),
-    durationChart: requiredRegion(document, "duration-chart"),
+    trendChart: requiredRegion(document, "trend-chart"),
     visitDetails: requiredRegion(document, "visit-details"),
     siteManager: requiredRegion(document, "site-manager"),
     errorBanner: requiredRegion(document, "error-banner"),
   };
   let controller = null;
+  const trendChart = createTrendChart({
+    document,
+    region: regions.trendChart,
+    formatDuration,
+    onSelectDate: dateKey => controller?.selectDate(dateKey),
+    onNavigate: action => {
+      if (action === "previous-week") return controller?.previousWeek();
+      if (action === "next-week") return controller?.nextWeek();
+      return controller?.goToLatest();
+    },
+  });
   let siteRenderKey = null;
   let siteButtons = new Map();
   let siteReordering = null;
@@ -138,11 +121,8 @@ export function createAnalysisView({
     if (belongsTo(active, regions.siteList) && typeof active?.dataset?.siteId === "string") {
       return { kind: "site", key: active.dataset.siteId };
     }
-    if (belongsTo(active, regions.openChart) && typeof active?.dataset?.dateKey === "string") {
-      return { kind: "open-chart", key: active.dataset.dateKey };
-    }
-    if (belongsTo(active, regions.durationChart) && typeof active?.dataset?.dateKey === "string") {
-      return { kind: "duration-chart", key: active.dataset.dateKey };
+    if (belongsTo(active, regions.trendChart) && typeof active?.dataset?.chartControl === "string") {
+      return { kind: "trend", key: active.dataset.chartControl };
     }
     return null;
   }
@@ -151,7 +131,10 @@ export function createAnalysisView({
     if (token === null) {
       return;
     }
-    const target = controls[token.kind]?.get(token.key);
+    let target = controls[token.kind]?.get(token.key);
+    if (token.kind === "trend" && target?.disabled) {
+      target = controls.trend.get("previous-week");
+    }
     if (typeof target?.focus === "function") {
       target.focus({ preventScroll: true });
     }
@@ -224,75 +207,6 @@ export function createAnalysisView({
     appendSummaryCard(document, cards, "今日打开次数", String(today.openCount));
     appendSummaryCard(document, cards, "今日有效使用时长", formatDuration(today.activeMs));
     regions.summary.replaceChildren(heading, cards);
-  }
-
-  function renderChart(region, model, { title, valueFor, formatValue, unit }) {
-    const heading = element(document, "h2", { text: title });
-    const chart = element(document, "div", { className: "line-chart" });
-    const plot = element(document, "div", { className: "chart-plot" });
-    const days = model.report?.days ?? [];
-    const maximum = Math.max(0, ...days.map(valueFor));
-    const labelIndexes = visibleLabelIndexes(days, model.selectedDateKey);
-    const buttons = new Map();
-    const positions = days.map((day, index) => pointPosition(
-      index,
-      days.length,
-      valueFor(day),
-      maximum,
-    ));
-
-    const namespace = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(namespace, "svg");
-    svg.setAttribute("class", "trend-line");
-    svg.setAttribute("viewBox", "0 0 100 100");
-    svg.setAttribute("preserveAspectRatio", "none");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("focusable", "false");
-    const baseline = document.createElementNS(namespace, "line");
-    baseline.setAttribute("class", "trend-baseline");
-    baseline.setAttribute("x1", "0");
-    baseline.setAttribute("y1", "84");
-    baseline.setAttribute("x2", "100");
-    baseline.setAttribute("y2", "84");
-    const polyline = document.createElementNS(namespace, "polyline");
-    polyline.setAttribute("class", "trend-polyline");
-    polyline.setAttribute("points", positions.map(({ x, y }) => `${x},${y}`).join(" "));
-    svg.append(baseline, polyline);
-
-    const points = element(document, "div", { className: "chart-points" });
-
-    for (const [index, day] of days.entries()) {
-      const value = valueFor(day);
-      const formattedValue = formatValue(value);
-      const { x, y } = positions[index];
-      const button = element(document, "button", { className: "chart-point" });
-      button.type = "button";
-      button.dataset.dateKey = day.dateKey;
-      button.dataset.labelVisible = String(labelIndexes.has(index));
-      button.disabled = model.pending;
-      button.style.setProperty("--point-x", String(x));
-      button.style.setProperty("--point-y", String(y));
-      button.setAttribute("aria-pressed", String(day.dateKey === model.selectedDateKey));
-      button.setAttribute("aria-label", `${day.dateKey}，${formattedValue}${unit}`);
-      button.addEventListener("click", () => controller?.selectDate(day.dateKey));
-      buttons.set(day.dateKey, button);
-      button.append(
-        element(document, "span", { className: "chart-point-marker" }),
-        element(document, "span", {
-          className: "chart-tooltip",
-          text: `${day.dateKey} · ${formattedValue}${unit}`,
-        }),
-        element(document, "span", {
-          className: "chart-label",
-          text: formatDateLabel(day.dateKey),
-        }),
-      );
-      points.append(button);
-    }
-    plot.append(svg, points);
-    chart.append(plot);
-    region.replaceChildren(heading, chart);
-    return buttons;
   }
 
   function renderDetails(model) {
@@ -573,18 +487,7 @@ export function createAnalysisView({
         siteRenderKey = nextSiteRenderKey;
       }
       renderSummary(model);
-      const openChartButtons = renderChart(regions.openChart, model, {
-        title: "每日打开次数",
-        valueFor: day => day.openCount,
-        formatValue: value => String(value),
-        unit: " 次",
-      });
-      const durationChartButtons = renderChart(regions.durationChart, model, {
-        title: "每日有效使用时长",
-        valueFor: day => day.activeMs,
-        formatValue: formatDuration,
-        unit: "",
-      });
+      const trendControls = trendChart.render(model);
       renderDetails(model);
       const nextManagerKey = managerKey(model);
       if (nextManagerKey !== managerRenderKey) {
@@ -594,8 +497,7 @@ export function createAnalysisView({
       renderError(model.error);
       restoreFocus(focusToken, {
         site: siteButtons,
-        "open-chart": openChartButtons,
-        "duration-chart": durationChartButtons,
+        trend: trendControls,
       });
     },
   };

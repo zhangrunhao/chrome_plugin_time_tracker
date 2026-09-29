@@ -217,8 +217,7 @@ function createDocumentFake() {
     "site-list",
     "manage-sites",
     "summary",
-    "open-chart",
-    "duration-chart",
+    "trend-chart",
     "visit-details",
     "site-manager",
     "error-banner",
@@ -330,9 +329,9 @@ function bindNoopController(view, overrides = {}) {
   });
 }
 
-test("keeps the summary, trends, and details in stable order without date controls", async () => {
+test("keeps the summary, combined trend, and details in stable order", async () => {
   const html = await readFile(new URL("../analysis.html", import.meta.url), "utf8");
-  const ids = ["summary", "open-chart", "duration-chart", "visit-details"];
+  const ids = ["summary", "trend-chart", "visit-details"];
 
   assert.deepEqual(
     [...ids].sort((left, right) => (
@@ -340,6 +339,7 @@ test("keeps the summary, trends, and details in stable order without date contro
     )),
     ids,
   );
+  assert.ok(ids.every(id => html.includes(`id="${id}"`)));
   assert.match(html, /id="summary"[^>]+aria-label="今日概览"/);
   assert.doesNotMatch(html, /id="date-range"/);
   assert.doesNotMatch(html, /type=["']date["']/);
@@ -367,22 +367,20 @@ test("renders aligned fourteen-day SVG lines with native button points", async (
     },
   }));
 
-  const openChart = document.elements.get("open-chart");
-  const durationChart = document.elements.get("duration-chart");
-  const openPoints = byDataset(openChart, "dateKey");
-  const durationPoints = byDataset(durationChart, "dateKey");
+  const chart = document.elements.get("trend-chart");
+  const openPoints = byDataset(chart, "dateKey").filter(point => point.dataset.metric === "openCount");
+  const durationPoints = byDataset(chart, "dateKey").filter(point => point.dataset.metric === "activeMs");
   assert.equal(openPoints.length, 14);
   assert.equal(durationPoints.length, 14);
   assert.ok(openPoints.every(point => point.tagName === "BUTTON" && point.type === "button"));
   assert.deepEqual(openPoints.map(point => point.dataset.dateKey), days.map(day => day.dateKey));
   assert.deepEqual(durationPoints.map(point => point.dataset.dateKey), days.map(day => day.dateKey));
-  assert.equal(descendants(openChart).filter(element => element.tagName === "POLYLINE").length, 1);
-  assert.equal(descendants(durationChart).filter(element => element.tagName === "POLYLINE").length, 1);
-  assert.equal(descendants(openChart).find(element => element.tagName === "SVG").getAttribute("aria-hidden"), "true");
+  assert.equal(descendants(chart).filter(element => element.tagName === "POLYLINE").length, 2);
+  assert.equal(descendants(chart).filter(element => element.tagName === "SVG").length, 1);
   assert.match(openPoints.at(-1).getAttribute("aria-label"), /2026-09-02.*2 次/);
   assert.match(durationPoints.at(-1).getAttribute("aria-label"), /2026-09-02.*02:02:02/);
   assert.equal(openPoints.at(-1).getAttribute("aria-pressed"), "true");
-  assert.ok(openPoints.every(point => point.dataset.labelVisible === "true"));
+  assert.equal(byRole(chart, "tooltip")[0].textContent, "2026-09-02");
 
   await openPoints[3].click();
   await durationPoints[5].click();
@@ -392,6 +390,86 @@ test("renders aligned fourteen-day SVG lines with native button points", async (
   assert.ok(detailsText.indexOf("09:00:00") < detailsText.indexOf("08:00:00"));
   assert.match(detailsText, /进行中/);
   assert.match(detailsText, /02:02:01/);
+});
+
+test("enables forward and latest controls only while viewing history", async () => {
+  const document = createDocumentFake();
+  const view = createAnalysisView({ document });
+  const actions = [];
+  bindNoopController(view, {
+    previousWeek: () => actions.push("previous"),
+    nextWeek: () => actions.push("next"),
+    goToLatest: () => actions.push("latest"),
+  });
+  const chart = document.elements.get("trend-chart");
+  const control = key => byDataset(chart, "chartControl", key)[0];
+  view.render(viewModel());
+  assert.equal(control("previous-week").disabled, false);
+  assert.equal(control("next-week").disabled, true);
+  assert.equal(control("latest").disabled, true);
+  await control("previous-week").click();
+  const keys = dateKeys(new Date(2026, 7, 13).getTime(), 14);
+  const days = keys.map(dateKey => ({ dateKey, openCount: 0, activeMs: 0 }));
+  view.render(viewModel({ days, selectedDateKey: "2026-08-26" }));
+  assert.equal(control("next-week").disabled, false);
+  assert.equal(control("latest").disabled, false);
+  await control("next-week").click();
+  await control("latest").click();
+  assert.deepEqual(actions, ["previous", "next", "latest"]);
+});
+
+test("highlights a whole metric from its line or keyboard focus and floats only the date", async () => {
+  const document = createDocumentFake();
+  const view = createAnalysisView({ document });
+  bindNoopController(view);
+  const model = viewModel();
+  view.render(model);
+  const chart = document.elements.get("trend-chart");
+  const hit = descendants(chart).find(node => node.tagName === "PATH" && node.dataset.metric === "openCount");
+  await hit.dispatch("pointerenter");
+  assert.equal(chart.dataset.activeMetric, "openCount");
+  const values = descendants(chart).filter(node => node.className === "chart-point-value");
+  assert.equal(values.length, 28);
+  assert.equal(values[13].textContent, "2 次");
+  assert.equal(values[27].textContent, "02:02:02");
+
+  const point = byDataset(chart, "dateKey").find(node => (
+    node.dataset.metric === "activeMs" && node.dataset.dateKey === "2026-08-23"
+  ));
+  point.focus();
+  await point.dispatch("focus");
+  assert.equal(chart.dataset.activeMetric, "activeMs");
+  assert.equal(byRole(chart, "tooltip")[0].textContent, "2026-08-23");
+  view.render(viewModel({ days: model.report.days.map(day => ({ ...day, activeMs: day.activeMs + 1000 })) }));
+  assert.equal(chart.dataset.activeMetric, "activeMs");
+  assert.equal(document.activeElement.dataset.dateKey, "2026-08-23");
+});
+
+test("preserves horizontal chart scrolling across date and live data changes", () => {
+  const document = createDocumentFake();
+  const view = createAnalysisView({ document });
+  bindNoopController(view);
+  view.render(viewModel());
+  const chart = document.elements.get("trend-chart");
+  const scroller = () => descendants(chart).find(node => node.className === "chart-scroll");
+  scroller().scrollLeft = 480;
+  view.render(viewModel({ selectedDateKey: "2026-09-01" }));
+  assert.equal(scroller().scrollLeft, 480);
+  view.render(viewModel({ days: reportDays().map(day => ({ ...day, activeMs: day.activeMs + 1000 })) }));
+  assert.equal(scroller().scrollLeft, 480);
+});
+
+test("keeps keyboard focus on navigation when returning to the newest window", () => {
+  const document = createDocumentFake();
+  const view = createAnalysisView({ document });
+  bindNoopController(view);
+  const keys = dateKeys(new Date(2026, 7, 13).getTime(), 14);
+  view.render(viewModel({ days: keys.map(dateKey => ({ dateKey, openCount: 0, activeMs: 0 })) }));
+  const chart = document.elements.get("trend-chart");
+  byDataset(chart, "chartControl", "latest")[0].focus();
+  view.render(viewModel());
+  assert.equal(document.activeElement.disabled, false);
+  assert.equal(document.activeElement.dataset.chartControl, "previous-week");
 });
 
 test("long-press drag reorders site buttons once without selecting the dragged site", async () => {
@@ -565,16 +643,16 @@ test("keeps every zero-value date on one SVG baseline", () => {
   const days = reportDays(14).map(day => ({ ...day, openCount: 0, activeMs: 0 }));
   view.render(viewModel({ days }));
 
-  for (const chartId of ["open-chart", "duration-chart"]) {
-    const chart = document.elements.get(chartId);
-    const polyline = descendants(chart).find(element => element.tagName === "POLYLINE");
+  const chart = document.elements.get("trend-chart");
+  for (const metric of ["openCount", "activeMs"]) {
+    const polyline = descendants(chart).find(element => element.tagName === "POLYLINE" && element.dataset.metric === metric);
     const yCoordinates = polyline.getAttribute("points")
       .trim()
       .split(/\s+/)
       .map(point => Number(point.split(",")[1]));
     assert.deepEqual(new Set(yCoordinates), new Set([84]));
     assert.deepEqual(
-      byDataset(chart, "dateKey").map(point => point.dataset.dateKey),
+      byDataset(chart, "dateKey").filter(point => point.dataset.metric === metric).map(point => point.dataset.dateKey),
       days.map(day => day.dateKey),
     );
   }
@@ -858,12 +936,12 @@ test("keeps focused site controls stable across report refreshes and restores ch
   assert.equal(restoredSite, originalSite);
   assert.equal(document.activeElement, restoredSite);
 
-  for (const chartId of ["open-chart", "duration-chart"]) {
-    const originalPoint = byDataset(document.elements.get(chartId), "dateKey")[3];
+  const chart = document.elements.get("trend-chart");
+  for (const metric of ["openCount", "activeMs"]) {
+    const originalPoint = byDataset(chart, "dateKey").filter(point => point.dataset.metric === metric)[3];
     originalPoint.focus();
-    view.render(viewModel({ report: { todaySummary: { openCount: 4, activeMs: 4_000 } } }));
-    const restoredPoint = byDataset(document.elements.get(chartId), "dateKey")[3];
-    assert.notEqual(restoredPoint, originalPoint);
+    view.render(viewModel({ selectedDateKey: originalPoint.dataset.dateKey }));
+    const restoredPoint = byDataset(chart, "dateKey").filter(point => point.dataset.metric === metric)[3];
     assert.equal(document.activeElement, restoredPoint);
     assert.deepEqual(restoredPoint.lastFocusOptions, { preventScroll: true });
   }

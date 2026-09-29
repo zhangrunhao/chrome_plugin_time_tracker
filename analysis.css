@@ -154,6 +154,7 @@ button:disabled {
 }
 
 main {
+  min-width: 0;
   width: min(100%, 92rem);
   padding: 2.25rem clamp(1.25rem, 4vw, 4rem) 4rem;
 }
@@ -263,25 +264,114 @@ main {
   font-size: 0.82rem;
 }
 
-.trend-stack {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+.trend-panel {
+  min-width: 0;
   margin: 1rem 0;
 }
 
-.line-chart {
-  margin-top: 1rem;
+.trend-heading,
+.trend-navigation,
+.chart-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.trend-heading {
+  justify-content: space-between;
+  gap: 0.8rem 1.25rem;
+}
+
+.trend-range {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-nav-button {
+  min-height: 2.25rem;
+  border: 1px solid #b8cbbd;
+  border-radius: 0.6rem;
+  padding: 0.4rem 0.7rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trend-nav-button:hover:enabled {
+  border-color: var(--accent);
+  background: #d6e7dc;
+}
+
+.trend-nav-button:disabled {
+  border-color: var(--line);
+  background: #f1f3ef;
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chart-legend {
+  margin: 1rem 0 0.8rem;
+  gap: 0.5rem 1rem;
+}
+
+[data-metric="openCount"] {
+  --series-color: var(--accent);
+}
+
+[data-metric="activeMs"] {
+  --series-color: #a56522;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 0;
+  border-radius: 0.35rem;
+  padding: 0.35rem 0.1rem;
+  background: transparent;
+  color: var(--series-color);
+  font-size: 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.chart-legend-item::before {
+  width: 1.5rem;
+  border-top: 3px solid currentColor;
+  content: "";
+}
+
+.chart-legend-item[data-metric="activeMs"]::before {
+  border-top-style: dashed;
+}
+
+.chart-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0.25rem 0 0.75rem;
+}
+
+.chart-canvas {
+  min-width: 52rem;
+  /* Reserve the full duration tick width and its gap inside the scroll area. */
+  padding: 0 4.5rem 0 2rem;
 }
 
 .chart-plot {
   position: relative;
-  height: clamp(14rem, 30vw, 19rem);
-  margin: 0 0.85rem;
+  height: 19rem;
 }
 
 .trend-line,
-.chart-points {
+.chart-points,
+.chart-labels {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -293,54 +383,77 @@ main {
 }
 
 .trend-baseline {
-  stroke: #bfc8c0;
-  stroke-width: 0.7;
+  stroke: var(--line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.trend-polyline,
+.trend-hit-area {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
 .trend-polyline {
-  fill: none;
-  stroke: var(--accent);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
+  stroke: var(--series-color);
+  stroke-width: 2.5;
+  pointer-events: none;
+  transition: opacity 120ms ease, stroke-width 120ms ease;
+}
+
+.trend-polyline[data-metric="activeMs"] {
+  stroke-dasharray: 6 5;
+}
+
+.trend-hit-area {
+  stroke: transparent;
+  stroke-width: 18;
+  pointer-events: stroke;
+}
+
+.chart-points,
+.chart-labels {
+  pointer-events: none;
 }
 
 .chart-point {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  z-index: 1;
+  top: calc(var(--point-y) * 1%);
   left: calc(var(--point-x) * 1%);
-  width: 1.8rem;
+  width: 1.5rem;
+  height: 1.5rem;
   border: 0;
   padding: 0;
   background: transparent;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .chart-point-marker {
   position: absolute;
-  top: calc(var(--point-y) * 1%);
+  top: 50%;
   left: 50%;
-  width: 0.82rem;
-  height: 0.82rem;
-  border: 2px solid var(--accent);
+  width: 0.65rem;
+  height: 0.65rem;
+  border: 2px solid var(--series-color);
   border-radius: 50%;
   background: var(--paper);
-  box-shadow: 0 0 0 3px rgba(255, 254, 251, 0.86);
   transform: translate(-50%, -50%);
 }
 
-.chart-point:hover .chart-point-marker {
-  background: var(--accent-soft);
+.chart-point[data-metric="activeMs"] .chart-point-marker {
+  border-radius: 0.1rem;
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
 .chart-point[aria-pressed="true"] .chart-point-marker {
-  border-radius: 0.12rem;
-  background: var(--accent);
-  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--series-color);
+  box-shadow: 0 0 0 3px var(--paper);
 }
 
 .chart-point:focus-visible {
@@ -348,41 +461,95 @@ main {
 }
 
 .chart-point:focus-visible .chart-point-marker {
-  box-shadow:
-    0 0 0 3px var(--paper),
-    0 0 0 6px rgba(49, 95, 73, 0.38);
+  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--series-color);
+}
+
+.chart-point-value {
+  position: absolute;
+  bottom: calc(100% + 0.1rem);
+  left: 50%;
+  border-radius: 0.25rem;
+  padding: 0.12rem 0.2rem;
+  background: var(--paper);
+  color: var(--series-color);
+  font-size: 0.68rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+#trend-chart[data-active-metric="openCount"] [data-metric="activeMs"],
+#trend-chart[data-active-metric="activeMs"] [data-metric="openCount"] {
+  opacity: 0.25;
+}
+
+#trend-chart[data-active-metric="openCount"] .trend-polyline[data-metric="openCount"],
+#trend-chart[data-active-metric="activeMs"] .trend-polyline[data-metric="activeMs"] {
+  stroke-width: 4;
+}
+
+#trend-chart[data-active-metric="openCount"] .chart-points[data-metric="openCount"],
+#trend-chart[data-active-metric="activeMs"] .chart-points[data-metric="activeMs"] {
+  z-index: 2;
+}
+
+#trend-chart[data-active-metric="openCount"] [data-metric="openCount"] .chart-point-value,
+#trend-chart[data-active-metric="activeMs"] [data-metric="activeMs"] .chart-point-value {
+  opacity: 1;
+}
+
+#trend-chart[data-active-metric="openCount"] [data-metric="openCount"] .chart-point-marker,
+#trend-chart[data-active-metric="activeMs"] [data-metric="activeMs"] .chart-point-marker {
+  background: var(--series-color);
+}
+
+.chart-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 16%;
+  left: calc(var(--point-x) * 1%);
+  width: 0;
+  pointer-events: none;
+}
+
+.chart-cursor::after {
+  position: absolute;
+  top: 2rem;
+  bottom: 0;
+  border-left: 1px dashed #bfc8c0;
+  content: "";
 }
 
 .chart-tooltip {
   position: absolute;
-  z-index: 2;
-  top: calc(var(--point-y) * 1%);
-  left: 50%;
+  top: 0;
+  z-index: 3;
   width: max-content;
-  max-width: 13rem;
   border-radius: 0.45rem;
-  padding: 0.35rem 0.5rem;
+  padding: 0.35rem 0.55rem;
   background: var(--ink);
   color: white;
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, calc(-100% - 0.75rem));
-  transition: opacity 120ms ease;
+  transform: translateX(-50%);
 }
 
-.chart-point:hover .chart-tooltip,
-.chart-point:focus-visible .chart-tooltip,
-.chart-point[aria-pressed="true"] .chart-tooltip {
-  opacity: 1;
+.chart-tooltip[data-edge="start"] {
+  transform: none;
+}
+
+.chart-tooltip[data-edge="end"] {
+  transform: translateX(-100%);
 }
 
 .chart-label {
   position: absolute;
   bottom: 0;
-  left: 50%;
+  left: calc(var(--point-x) * 1%);
   color: var(--muted);
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
@@ -390,15 +557,44 @@ main {
   transform: translateX(-50%);
 }
 
-.chart-point[data-label-visible="false"] .chart-label {
-  visibility: hidden;
-}
-
-.chart-point[aria-pressed="true"] .chart-label {
+.chart-label[data-selected="true"] {
   color: var(--ink);
   font-weight: 800;
   text-decoration: underline;
   text-underline-offset: 0.22rem;
+}
+
+.chart-axis {
+  position: absolute;
+  inset: 0 auto 0 0;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--series-color);
+  pointer-events: none;
+}
+
+.chart-axis-right {
+  inset: 0 0 0 auto;
+}
+
+.chart-axis-tick {
+  position: absolute;
+  top: calc(var(--point-y) * 1%);
+  right: 0.8rem;
+  width: max-content;
+  transform: translateY(-50%);
+}
+
+.chart-axis-right .chart-axis-tick {
+  right: auto;
+  left: 0.8rem;
+}
+
+.chart-hint {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.6;
 }
 
 .detail-panel {
@@ -704,5 +900,6 @@ main {
   *::before,
   *::after {
     scroll-behavior: auto !important;
+    transition: none !important;
   }
 }

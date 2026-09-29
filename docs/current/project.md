@@ -1,8 +1,8 @@
 # 项目当前状态
 
-> 最后核验：2026-09-03（Asia/Shanghai）
+> 最后更新：2026-09-29（Asia/Shanghai，时间轴交互与验证）；发布资料基线核验于 2026-09-03。
 
-当前仓库已实现 WebTrace V1.1：用户可以配置多个网站，在本机记录有效打开和有效观看时长，并在分析页查看今日概览、固定最近 14 个本地日的折线趋势和选中日期的逐次访问明细。左侧网站列表按保存顺序显示，支持长按拖动排序并保存。添加网站前现已显著披露本地数据处理并要求主动确认。商店图标、截图、宣传图、发布字段、本地上传包和三个公开官网页面均已准备；Chrome Web Store 尚未创建条目、上传或提交。当次自动验证为 148/148。
+当前 WebTrace 支持配置多个网站，在本机记录有效打开和有效观看时长；分析页显示今日概览、每屏 14 个本地日的双线趋势和选中日期的逐次访问明细。时间轴支持每次前后移动一周和回到最新；悬停某条线会突出该指标及每天数值，浮层只显示完整日期。左侧网站列表支持长按排序，添加网站前显著披露本地数据处理并要求主动确认。2026-09-29 当前代码自动测试为 158/158，通过隔离 Chromium 专项验证；本次时间轴改动尚未经日常 Chrome 人工验收。
 
 ## 内容边界
 
@@ -52,12 +52,16 @@
 ### 分析页与本地边界
 
 - 分析页默认选择保存顺序中的第一个网站和今天；“今日概览”始终展示所选网站今天的打开次数和有效使用时长。
-- 两张上下排列的通栏 SVG 折线图固定展示今天及此前 13 个本地日。页面没有日期选择或超过最近 14 天的查看入口，零值日期仍保留。
-- 每个折线数据点是可聚焦的原生按钮，包含完整日期和值的无障碍名称；鼠标或键盘触发后，两图选中日期同步并更新访问明细。
+- 一张 SVG 图显示打开次数（绿色实线、左轴）和有效时长（棕色虚线、右轴）；两种指标独立缩放，默认展示今天及此前 13 个本地日，零值日期仍保留。
+- “前一周”和“后一周”每次按本地日历移动 7 天；历史位置启用“后一周”和“回到最新”，到达今天后禁用这两个按钮，不能前进到未来。
+- 历史窗口在自动刷新、跨午夜和切换网站时保持；最新窗口随本地日期滚动。翻页后仍在窗口内的选中日期保留，否则选中窗口末日；“回到最新”选中今天。
+- 悬停折线、数据点或图例会突出整条指标和全部每日数值，另一指标淡化；图例和数据点可键盘聚焦。日期浮层只显示 `YYYY-MM-DD`，完整指标值保留在数据点的无障碍名称中。
+- 每个折线数据点是可聚焦的原生按钮；鼠标或键盘触发后，两条线的选中日期同步并更新访问明细。右侧留白完整容纳时长刻度，宽屏无额外横向滚动条；窄屏在图内横向滚动，选点和数据刷新保留滚动位置。
+- 连续翻周忽略过期读取结果；查询失败时保留已显示的窗口，报表和选中日期在全部读取成功后一起替换。
 - 访问明细按图表选中的打开日期展示，记录按打开时间从新到旧排列；进行中记录显示“进行中”。
 - 网站添加、排序和删除历史通过受信任扩展消息交给后台串行处理；网页上下文不能发送管理命令。
 - 运行时代码不调用 `fetch`、`XMLHttpRequest`、`WebSocket` 或 `EventSource`，不加载远程资源，不保存完整 URL、路径、查询参数或网页标题。
-- 访问记录默认长期保留。最近 14 天以前的数据仍在本地存储，当前分析页不查询或展示。
+- 访问记录默认长期保留，当前分析页可按周查询和展示最近 14 天以前的数据。
 
 ### 商店发布材料
 
@@ -70,7 +74,7 @@
 
 ## 有效决定
 
-- 分析页固定展示滚动最近 14 个本地日，不提供日期范围控件；超过 14 天的查看能力留给未来独立变更。
+- 时间轴每屏沿用 14 个本地日，支持按周前后回看和回到最新，不提供任意日期范围输入；次数与时长合并展示，并支持整条指标高亮和完整日期浮层。
 - 网站添加后持续统计，不再向用户提供停止或恢复状态。
 - 当前 HTTP/HTTPS 全主机权限和 `webNavigation` 继续使用并接受相应商店审核风险；只有实际 Chrome Web Store 审核因此失败时，才建立独立 Change 设计按网站授权或更小权限方案。
 - 为实现长期本地保留，继续使用 `unlimitedStorage`；它只服务于扩展 IndexedDB 记录，不用于缓存网页内容。
@@ -80,7 +84,7 @@
 
 ## 当前限制与风险
 
-- 当前没有最近 14 天以前的历史查看入口，也不支持自定义范围、周/月报表、跨网站汇总、导入、导出、分享、提醒、限制、登录或同步。
+- 不支持自定义范围、按周/月聚合报表、跨网站汇总、导入、导出、分享、提醒、限制、登录或同步。
 - HTTP/HTTPS 主机权限覆盖范围较宽；代码只为用户配置的网站生成访问记录，但 Chrome 安装界面仍会展示宽泛访问范围。
 - 异常退出最多可能少计约一个 4 秒确认周期；恢复逻辑以最后确认时间截断，目标是只少计而不累计离线时间。
 - 记录默认长期保留并依赖用户主动删除，没有自动过期策略。
@@ -95,27 +99,26 @@
 
 ### 自动验证
 
-2026-09-03 在当前代码运行：
+2026-09-29 在当前代码运行：
 
 ```sh
 npm test
-find . -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
 node --check background.js
 node --check content.js
+node --check src/analysis/controller.js
+node --check src/analysis/view.js
+node --check src/analysis/trend-chart.js
+node --check src/domain/local-date-range.js
 node -e 'JSON.parse(require("fs").readFileSync("manifest.json", "utf8"))'
 git diff --check
-rg -n "fetch\(|XMLHttpRequest|WebSocket|EventSource" . --glob '*.js' --glob '!node_modules/**' --glob '!vendor/**'
-rg -n "(src|href)=['\"]https?://" analysis.html
-node --test tests/manifest.test.js
 ```
 
-- `npm test`：148/148 通过；在既有覆盖上新增采集告知、必选确认、失败保留草稿、四种图标尺寸、三张商店图片尺寸，以及审核说明测试域名可被扩展接受的检查。
-- 全部 JavaScript、后台/内容入口和 manifest JSON 检查通过。
-- 隐私网络调用和远程页面资源扫描均无匹配；`rg` 因无匹配返回 1，结果符合预期。`git diff --check` 通过。
+- `npm test`：158/158 通过；覆盖历史翻周、最新边界、跨午夜/切换网站保持窗口、历史明细与独立今日概览、快速请求和读取失败的一致性、双线高亮、完整日期浮层、滚动与焦点保留，以及跨年、闰日和夏令时日期计算。
+- 后台/内容入口、改动的 JavaScript 和 manifest JSON 检查通过，`git diff --check` 通过。
 - manifest 测试确认版本 `1.1.0`，权限和 HTTP/HTTPS 内容脚本范围与 V1 相同。
-- `npm run capture:store` 在 Playwright Chromium `151.0.7922.34` 的临时隔离 profile 中载入真实扩展并成功生成两张截图，页面控制台和脚本无错误；这是自动化浏览器验证，不记作人工 Chrome 验收。
-- 另用同版本隔离 Chromium 加载当前扩展，确认披露内容包含采集范围、本地存储、保留与不共享规则；确认框默认未选中且必选，未确认提交不写入存储，确认后可添加 `wikipedia.org` 并重置表单；隐私链接最终打开公开 HTTPS 页面且 Limited Use 文案可见，全程无浏览器错误。
-- 上传 ZIP 已解压到临时目录复核：manifest 可解析，后台和内容入口通过语法检查，全部 manifest 入口存在，清单不含开发文件或秘密。
+- 2026-09-29 使用 Playwright CLI 与隔离 Chromium `151.0.7922.34` 加载真实扩展，使用合成网站/访问数据验证：连续前后翻周、回到最新和禁用状态、历史数据点键盘选择、今日概览保持、两条真实线段悬停后各显示 14 个数值、峰值数值与日期浮层不重叠、全零数据的图例聚焦，以及 390px 页面不溢出和选点/实时刷新保留横向滚动。此为自动化浏览器验证，不记作日常 Chrome 人工验收。
+- 同日同版本隔离 Chromium 检查横向滚动边界：1280、1440、1920px 视口下，两种指标高亮时图表的 `scrollWidth` 与 `clientWidth` 均相等，右轴刻度未超出画布；390px 下图内滚动保留，选点前后滚动位置一致，页面不溢出。
+- 商店素材与既有 ZIP 的验证基线仍为 2026-09-03：隔离 Chromium 截图和隐私确认流程、ZIP 解压后清单与语法检查通过；本次未重新生成商店截图或上传包，它们尚不包含时间轴的新界面。
 
 ### Chrome 验收
 
@@ -125,12 +128,13 @@ node --test tests/manifest.test.js
 - 该次 V1.1 改动后，Agent 在同一 Chrome 中重新加载既有未打包扩展并打开分析页，确认页面可显示已有网站列表、今日概览、趋势和访问明细。
 - 2026-09-03 的浏览器控制安全策略拒绝操作 `chrome://extensions/` 与 `chrome-extension://` 页面，因此未把当前隐私确认或长按排序写成人工 Chrome 通过；这些场景由 148 项自动测试和隔离 Chromium 验证覆盖。
 - V1 打开、计时、恢复、分析页复用和权限范围由既有 Chrome 证据与当次自动回归共同覆盖。
+- 本次时间轴专项：2026-09-29 日常 Chrome 控制连接两次超时，未完成扩展管理页重新加载及人工场景验证；覆盖来自上述隔离 Chromium 验证。
 
 ## 证据入口
 
 - 扩展声明与权限：[`manifest.json`](../../manifest.json)
 - 事件、恢复与计时：[`background.js`](../../background.js)、[`tracker.js`](../../src/background/tracker.js)、[`runtime-machine.js`](../../src/domain/runtime-machine.js)
 - 本地数据库：[`webtrace-db.js`](../../src/storage/webtrace-db.js)、[`tracking-repository.js`](../../src/storage/tracking-repository.js)
-- 分析页：[`analysis.html`](../../analysis.html)、[`controller.js`](../../src/analysis/controller.js)、[`view.js`](../../src/analysis/view.js)、[`site-reorder.js`](../../src/analysis/site-reorder.js)
+- 分析页：[`analysis.html`](../../analysis.html)、[`controller.js`](../../src/analysis/controller.js)、[`view.js`](../../src/analysis/view.js)、[`trend-chart.js`](../../src/analysis/trend-chart.js)、[`site-reorder.js`](../../src/analysis/site-reorder.js)
 - 自动验收：[`webtrace-flow.test.js`](../../tests/webtrace-flow.test.js)、[`chrome-events.test.js`](../../tests/chrome-events.test.js)、[`analysis-view.test.js`](../../tests/analysis-view.test.js)
 - 商店资料与素材：[`store-publishing.md`](store-publishing.md)、[`store-assets/README.md`](../../store-assets/README.md)、[`store-assets.test.js`](../../tests/store-assets.test.js)

@@ -49,6 +49,16 @@ function nextLocalMidnight(at) {
   ).getTime();
 }
 
+export function shiftLocalDateKey(dateKey, dayOffset) {
+  const at = parseLocalDateKey(dateKey);
+  if (at === null || !Number.isInteger(dayOffset)) {
+    throw new DateRangeError("INVALID_DATE_RANGE");
+  }
+  const date = new Date(at);
+  date.setDate(date.getDate() + dayOffset);
+  return localDateKey(date.getTime());
+}
+
 export function resolveDateRange({ startDateKey, endDateKey, todayDateKey }) {
   const startAt = parseLocalDateKey(startDateKey);
   const endStartedAt = parseLocalDateKey(endDateKey);

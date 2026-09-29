@@ -6,6 +6,7 @@ import {
   DateRangeError,
   getRollingDateRange,
   resolveDateRange,
+  shiftLocalDateKey,
 } from "../src/domain/local-date-range.js";
 
 const TODAY = "2026-09-02";
@@ -66,23 +67,33 @@ test("crosses month, year, and leap day by local calendar", () => {
     "2024-02-29",
     "2024-03-01",
   ]);
+  assert.equal(shiftLocalDateKey("2026-01-03", -7), "2025-12-27");
+  assert.equal(shiftLocalDateKey("2024-03-03", -7), "2024-02-25");
 });
 
 test("does not treat daylight-saving days as fixed 24-hour periods", () => {
   const moduleUrl = new URL("../src/domain/local-date-range.js", import.meta.url).href;
   const script = `
-    import { resolveDateRange } from ${JSON.stringify(moduleUrl)};
+    import { resolveDateRange, shiftLocalDateKey } from ${JSON.stringify(moduleUrl)};
     const value = resolveDateRange({
       startDateKey: "2026-03-07",
       endDateKey: "2026-03-09",
       todayDateKey: "2026-03-09",
     });
-    process.stdout.write(JSON.stringify(value.days.map(day => day.endedAt - day.startedAt)));
+    process.stdout.write(JSON.stringify({
+      durations: value.days.map(day => day.endedAt - day.startedAt),
+      nextWeek: shiftLocalDateKey("2026-03-07", 7),
+      previousWeek: shiftLocalDateKey("2026-11-04", -7),
+    }));
   `;
   const result = execFileSync(process.execPath, ["--input-type=module", "-e", script], {
     env: { ...process.env, TZ: "America/New_York" },
     encoding: "utf8",
   });
 
-  assert.deepEqual(JSON.parse(result), [86_400_000, 82_800_000, 86_400_000]);
+  assert.deepEqual(JSON.parse(result), {
+    durations: [86_400_000, 82_800_000, 86_400_000],
+    nextWeek: "2026-03-14",
+    previousWeek: "2026-10-28",
+  });
 });

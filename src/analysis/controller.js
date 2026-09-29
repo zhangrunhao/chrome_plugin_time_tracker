@@ -1,6 +1,7 @@
 import {
   getRollingDateRange,
   localDateKey,
+  shiftLocalDateKey,
 } from "../domain/local-date-range.js";
 
 const FALLBACK_ERROR = Object.freeze({
@@ -81,6 +82,7 @@ export function createAnalysisController({
     sites: [],
     selectedSiteId: null,
     todayDateKey: initialTodayDateKey,
+    range: initialRange,
     selectedDateKey: initialRange.endDateKey,
     report: null,
     error: null,
@@ -91,6 +93,9 @@ export function createAnalysisController({
   let refreshPending = false;
   let preferredSiteId = null;
   let stopAutoRefresh = null;
+  let historicalEndDateKey = null;
+  let reportRevision = 0;
+  let navigationRollback = null;
 
   function render() {
     view.render(copy(state));
@@ -103,7 +108,16 @@ export function createAnalysisController({
   function updateDateState() {
     const now = clock.now();
     state.todayDateKey = localDateKey(now);
-    return getRollingDateRange(now);
+    if (historicalEndDateKey !== null && historicalEndDateKey >= state.todayDateKey) {
+      historicalEndDateKey = null;
+    }
+    state.range = historicalEndDateKey === null
+      ? getRollingDateRange(now)
+      : {
+          startDateKey: shiftLocalDateKey(historicalEndDateKey, -13),
+          endDateKey: historicalEndDateKey,
+        };
+    return state.range;
   }
 
   async function loadReport() {
@@ -112,10 +126,32 @@ export function createAnalysisController({
       return;
     }
     const range = updateDateState();
-    state.report = await dataSource.getReport(state.selectedSiteId, {
+    const revision = reportRevision;
+    const siteId = state.selectedSiteId;
+    let selectedDateKey = state.selectedDateKey;
+    let report = await dataSource.getReport(siteId, {
       ...range,
-      selectedDateKey: state.selectedDateKey,
+      selectedDateKey,
     });
+    if (revision !== reportRevision) {
+      refreshPending = true;
+      return false;
+    }
+    const availableDates = new Set(report.days.map(day => day.dateKey));
+    if (!availableDates.has(selectedDateKey)) {
+      selectedDateKey = availableDates.has(report.range.endDateKey)
+        ? report.range.endDateKey
+        : report.days.at(-1)?.dateKey ?? null;
+      report = await dataSource.getReport(siteId, { ...range, selectedDateKey });
+      if (revision !== reportRevision) {
+        refreshPending = true;
+        return false;
+      }
+    }
+    // Publish the report and detail date together, after every required read succeeds.
+    state.selectedDateKey = selectedDateKey;
+    state.report = report;
+    return true;
   }
 
   async function loadOnce(nextPreferredSiteId) {
@@ -137,15 +173,11 @@ export function createAnalysisController({
     const selectedSite = sites.find(site => site.id === requestedSiteId) ?? sites[0];
     state.selectedSiteId = selectedSite.id;
 
-    await loadReport();
-    const availableDates = new Set(state.report.days.map(day => day.dateKey));
-    if (!availableDates.has(state.selectedDateKey)) {
-      state.selectedDateKey = availableDates.has(state.report.range.endDateKey)
-        ? state.report.range.endDateKey
-        : state.report.days.at(-1)?.dateKey ?? null;
-      await loadReport();
+    if (!await loadReport()) {
+      return;
     }
     state.mode = "READY";
+    navigationRollback = null;
     if (!sites.some(site => site.id === state.deleteConfirmationSiteId)) {
       state.deleteConfirmationSiteId = null;
     }
@@ -166,9 +198,16 @@ export function createAnalysisController({
         refreshPending = false;
         const nextPreferredSiteId = preferredSiteId;
         preferredSiteId = null;
+        const revision = reportRevision;
         try {
           await loadOnce(nextPreferredSiteId);
         } catch (error) {
+          if (navigationRollback !== null && revision === reportRevision) {
+            historicalEndDateKey = navigationRollback.historicalEndDateKey;
+            state.range = navigationRollback.range;
+            state.selectedDateKey = navigationRollback.selectedDateKey;
+            navigationRollback = null;
+          }
           if (state.error === null) {
             state.error = publicError(error);
           }
@@ -188,6 +227,7 @@ export function createAnalysisController({
       return Promise.resolve();
     }
     state.selectedSiteId = siteId;
+    reportRevision += 1;
     render();
     return refresh({ selectSiteId: siteId });
   }
@@ -199,7 +239,29 @@ export function createAnalysisController({
       return Promise.resolve();
     }
     state.selectedDateKey = dateKey;
+    reportRevision += 1;
     render();
+    return refresh();
+  }
+
+  function navigateWeeks(weeks) {
+    beginUserAction();
+    updateDateState();
+    navigationRollback ??= {
+      historicalEndDateKey,
+      range: state.range,
+      selectedDateKey: state.selectedDateKey,
+    };
+    const endDateKey = weeks === null
+      ? state.todayDateKey
+      : shiftLocalDateKey(state.range.endDateKey, weeks * 7);
+    historicalEndDateKey = endDateKey >= state.todayDateKey ? null : endDateKey;
+    const range = updateDateState();
+    if (weeks === null || state.selectedDateKey < range.startDateKey
+      || state.selectedDateKey > range.endDateKey) {
+      state.selectedDateKey = range.endDateKey;
+    }
+    reportRevision += 1;
     return refresh();
   }
 
@@ -231,6 +293,10 @@ export function createAnalysisController({
     refresh,
     selectSite,
     selectDate,
+
+    previousWeek: () => navigateWeeks(-1),
+    nextWeek: () => navigateWeeks(1),
+    goToLatest: () => navigateWeeks(null),
 
     addSite(input) {
       return mutate(() => dataSource.addSite(input), null);

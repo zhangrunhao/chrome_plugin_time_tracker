@@ -243,6 +243,127 @@ test("recomputes the fixed rolling range after local midnight", async () => {
   assert.equal(view.lastModel.selectedDateKey, "2026-08-29");
 });
 
+test("pages fourteen-day trends by a week and stops at the latest window", async () => {
+  const { controller, view } = createAnalysisHarness({ now: NOW, sites: SITES });
+  await controller.initialize();
+  await controller.previousWeek();
+  assert.equal(view.lastModel.report.range.startDateKey, "2026-08-11");
+  assert.equal(view.lastModel.report.range.endDateKey, "2026-08-24");
+  assert.equal(view.lastModel.report.days.length, 14);
+  assert.equal(view.lastModel.selectedDateKey, "2026-08-24");
+
+  await controller.previousWeek();
+  assert.equal(view.lastModel.report.range.endDateKey, "2026-08-17");
+  await controller.nextWeek();
+  assert.equal(view.lastModel.report.range.endDateKey, "2026-08-24");
+  await controller.goToLatest();
+  assert.equal(view.lastModel.report.range.endDateKey, TODAY);
+  assert.equal(view.lastModel.selectedDateKey, TODAY);
+  await controller.nextWeek();
+  assert.equal(view.lastModel.report.range.endDateKey, TODAY);
+});
+
+test("preserves a historical window across midnight and site selection", async () => {
+  const { controller, clock, view } = createAnalysisHarness({ now: NOW, sites: SITES });
+  await controller.initialize();
+  await controller.previousWeek();
+  await controller.selectDate("2026-08-20");
+  clock.set(new Date(2026, 8, 1, 12).getTime());
+  await controller.refresh();
+  await controller.selectSite("disabled-site");
+  assert.equal(view.lastModel.report.range.startDateKey, "2026-08-11");
+  assert.equal(view.lastModel.report.range.endDateKey, "2026-08-24");
+  assert.equal(view.lastModel.selectedDateKey, "2026-08-20");
+  assert.equal(view.lastModel.todayDateKey, "2026-09-01");
+  await controller.nextWeek();
+  await controller.nextWeek();
+  assert.equal(view.lastModel.report.range.endDateKey, "2026-09-01");
+});
+
+test("loads older visits while keeping the overview on today", async () => {
+  const openedAt = new Date(2026, 7, 10, 8).getTime();
+  const { controller, view } = createAnalysisHarness({
+    now: NOW,
+    sites: SITES,
+    visits: [{
+      id: "old-visit", siteId: "s1", openedAt, endedAt: openedAt + 60_000,
+      lastActivityAt: openedAt + 60_000,
+      activeIntervals: [{ startedAt: openedAt, endedAt: openedAt + 60_000 }],
+    }],
+  });
+  await controller.initialize();
+  await controller.previousWeek();
+  await controller.previousWeek();
+  await controller.selectDate("2026-08-10");
+  assert.equal(view.lastModel.report.days.find(day => day.dateKey === "2026-08-10").openCount, 1);
+  assert.equal(view.lastModel.report.details[0].id, "old-visit");
+  assert.equal(view.lastModel.report.todaySummary.openCount, 0);
+});
+
+test("ignores an old report when another week is requested during loading", async () => {
+  const { controller, dataSource, view } = createAnalysisHarness({ now: NOW, sites: SITES });
+  await controller.initialize();
+  const reportStarted = deferred();
+  const releaseReport = deferred();
+  const getReport = dataSource.getReport.bind(dataSource);
+  let callCount = 0;
+  dataSource.getReport = async (...args) => {
+    const report = await getReport(...args);
+    if (callCount++ === 0) {
+      reportStarted.resolve();
+      await releaseReport.promise;
+    }
+    return report;
+  };
+  const first = controller.previousWeek();
+  await reportStarted.promise;
+  const second = controller.previousWeek();
+  releaseReport.resolve();
+  await Promise.all([first, second]);
+  assert.equal(view.lastModel.report.range.endDateKey, "2026-08-17");
+  assert.equal(view.lastModel.selectedDateKey, "2026-08-17");
+  assert.equal(view.lastModel.report.selectedDateKey, "2026-08-17");
+});
+
+test("a failed week load preserves the visible range for the next navigation", async () => {
+  const { controller, dataSource, view } = createAnalysisHarness({ now: NOW, sites: SITES });
+  await controller.initialize();
+  const getReport = dataSource.getReport.bind(dataSource);
+  dataSource.getReport = async () => { throw new Error("database unavailable"); };
+  await controller.previousWeek();
+  assert.equal(view.lastModel.report.range.endDateKey, TODAY);
+  assert.equal(view.lastModel.selectedDateKey, TODAY);
+  assert.equal(view.lastModel.range.endDateKey, TODAY);
+  assert.equal(view.lastModel.error.code, "INTERNAL_ERROR");
+  dataSource.getReport = getReport;
+  await controller.previousWeek();
+  assert.equal(view.lastModel.report.range.endDateKey, "2026-08-24");
+});
+
+test("keeps a report atomic if correcting a date during navigation fails", async () => {
+  const { controller, dataSource, view } = createAnalysisHarness({ now: NOW, sites: SITES });
+  await controller.initialize();
+  const started = deferred();
+  const release = deferred();
+  const getReport = dataSource.getReport.bind(dataSource);
+  let calls = 0;
+  dataSource.getReport = async (...args) => {
+    calls += 1;
+    if (calls === 1) { started.resolve(); await release.promise; }
+    if (calls === 3) throw new Error("date correction failed");
+    return getReport(...args);
+  };
+  const navigation = controller.previousWeek();
+  await started.promise;
+  const selection = controller.selectDate(TODAY);
+  release.resolve();
+  await Promise.all([navigation, selection]);
+  assert.equal(view.lastModel.range.endDateKey, TODAY);
+  assert.equal(view.lastModel.report.range.endDateKey, TODAY);
+  assert.equal(view.lastModel.selectedDateKey, TODAY);
+  assert.equal(view.lastModel.report.selectedDateKey, TODAY);
+});
+
 test("keeps disabled sites selectable and switches detail dates", async () => {
   const { controller, view } = createAnalysisHarness({ now: NOW, sites: SITES });
   await controller.initialize();
