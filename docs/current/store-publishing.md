@@ -1,6 +1,6 @@
 # Chrome Web Store 发布手册
 
-> 最后更新：2026-09-29（Asia/Shanghai，最终候选包、商店草稿和提交阻塞）；外部要求核验日期见文末。
+> 最后更新：2026-09-29（Asia/Shanghai，商店提交阻塞与 Google 问题反馈）；外部要求核验日期见文末。
 
 WebTrace `1.1.0` 已上传到既有 TimeTracker 条目，商店资料、图片、隐私披露和测试说明已保存。2026-09-29 Google 后台因主页、支持页和隐私政策连接超时而禁用提交按钮，尚未提交审核；线上仍是 TimeTracker `1.0.0`。用户已明确选择更新现有条目并授权提交，保留扩展 ID `efpighgeknabppbmfjpkfmebmnmckpgj`。
 
@@ -16,6 +16,7 @@ WebTrace `1.1.0` 已上传到既有 TimeTracker 条目，商店资料、图片�
 | 上传 ZIP | 已上传并审计 | `release/webtrace-1.1.0.zip`，逐字节匹配提交 `f2bcd90` 的运行文件 |
 | 主页、支持、隐私 URL | 已发布并验证 | 2026-09-29 新文案、中英隐私政策和截图已上线；三个页面及资源正常，桌面与手机宽度的隔离浏览器检查通过 |
 | Developer Dashboard | 草稿已保存，提交受阻 | 2026-09-29 登录核验；草稿 `1.1.0`，线上 `1.0.0`，三个公开 URL 连接超时 |
+| Google 问题反馈 | 已发送，没有支持工单号 | 2026-09-29 16:54，通过后台 Give Feedback 发送；页面确认 `Report sent, thank you!` |
 
 ### 商店条目与提交阻塞
 
@@ -24,6 +25,7 @@ WebTrace `1.1.0` 已上传到既有 TimeTracker 条目，商店资料、图片�
 - Package 页显示线上 `1.0.0` 使用 `storage` 和主机权限；草稿 `1.1.0` 还包含 `idle`、`unlimitedStorage`、`webNavigation`，已逐项填写本地统计用途。
 - `Why can't I submit?` 明确列出 Homepage、Support、Privacy policy URL 均为 `Timeout while connecting`；尚未进入提交确认弹窗或审核队列。
 - 当日从本机读取三个最终 URL 均为 HTTP 200，HTTPS 校验通过，Google/Cloudflare 公共 DNS 解析一致且无 AAAA 记录。上述验证不代表 Google 商店校验节点可达，安全组与外部网络连通性仍待确认。
+- 2026-09-29 在用户日常 Google Chrome 中核验，一站式支持与后台 Contact Us 均进入帮助页；`Other`、`Item status`、`Policy clarification` 相关分类没有提供邮件工单入口，并提示支持专员无法处理该问题。随后通过后台 `Give Feedback` 发送三条超时报错原文、公开 URL、当日排查结果、联系入口异常说明和后台截图，并允许 Google 就此次问题通过邮件联系。16:54（Asia/Shanghai）页面显示 `Report sent, thank you!`；此为问题反馈成功，不等同于创建正式支持工单、收到人工回复或提交扩展审核。
 - 链接问题解除后，重新保存并回读草稿，确认提交按钮可用，再完成提交确认并记录审核状态；不得把旧版的 `Published - public` 状态当成新版本已经通过审核。
 
 ### 人工验收与最终候选
