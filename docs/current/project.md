@@ -1,10 +1,10 @@
 # 项目当前状态
 
-> 最后更新：2026-09-29（Asia/Shanghai，商店提交阻塞与 Google 问题反馈）；外部状态见各项核验日期。
+> 最后更新：2026-10-18（Asia/Shanghai，GitHub 商店链接与提交审核）；外部状态见各项核验日期。
 
 当前 WebTrace 支持配置多个网站，在本机记录有效打开和有效观看时长；分析页显示今日概览、每屏 14 个本地日的双线趋势和选中日期的逐次访问明细。时间轴支持每次前后移动一周和回到最新；悬停某条线会突出该指标及每天数值，浮层只显示完整日期。左侧网站列表支持长按排序，添加网站前显著披露本地数据处理并要求主动确认。2026-09-29 当前代码自动测试为 158/158，通过隔离 Chromium 专项验证；本次时间轴改动尚未经日常 Chrome 人工验收。
 
-2026-09-29 已从提交 `f2bcd90` 生成并审计最终 ZIP，上传到既有 TimeTracker 条目，商店草稿为 WebTrace `1.1.0`；商店资料、图片、隐私披露和测试说明已保存。Google 后台报告主页、支持页和隐私政策连接超时，提交按钮不可用，尚未进入审核；线上仍为 TimeTracker `1.0.0`。同日 16:54 已通过后台 Give Feedback 发送排查结果和后台截图，并收到发送成功提示；正式支持工单未能创建，没有工单号。用户此前确认的五项日常 Chrome 人工验收未绑定具体包校验值，最终包另经隔离 Chromium 冒烟验证。
+2026-10-18 10:11（Asia/Shanghai），既有 TimeTracker 条目的 WebTrace `1.1.0` 已成功提交审核，后台显示 `Pending review`、`Item submitted.`，并保留审核通过后自动发布。商店主页、支持和隐私政策改用公开 GitHub 仓库链接后解除提交阻塞；线上仍为 TimeTracker `1.0.0`，不能把提交审核视为新版本已上线。最终 ZIP 校验与 2026-09-29 一致；此前人工验收与隔离 Chromium 验证边界不变。
 
 ## 内容边界
 
@@ -76,6 +76,7 @@
 - 2026-09-29 在已登录的 Chrome for Testing 中核验既有[商店条目](https://chromewebstore.google.com/detail/efpighgeknabppbmfjpkfmebmnmckpgj)：线上 TimeTracker `1.0.0`，草稿 WebTrace `1.1.0`。新包、图标、两张截图、宣传图、描述、权限理由、隐私披露和测试说明均已上传保存；分发为免费、公开、全部地区。详细状态以 [`store-publishing.md`](store-publishing.md) 为准。
 - `zhangrh.shop` 已公开部署[主页](https://zhangrh.shop/webtrace/)、[支持页](https://zhangrh.shop/webtrace/support/)和[隐私政策](https://zhangrh.shop/webtrace/privacy/)；2026-09-29 发布后，隔离 Chromium `151.0.7922.34` 在 1280×800 与 390×844 视口核验新文案、政策日期和截图，无鉴权、404、横向溢出、图片加载失败或控制台错误、警告。公网 HTML 与静态资源内容和本地发布产物一致。
 - 同日官网首页、支持、中英隐私政策、Hub 作品卡及合成截图均已上线；文案说明默认最近 14 天与按周回看，数据处理范围不变。官网内容和发布验证的权威来源为 `zhangrh.shop` 仓库的 `docs/current/project.md` 与 `docs/current/deployment.md`。
+- 2026-10-18 已发布官网隐私政策的 [GitHub 镜像](../../PRIVACY.md)，提交 `53b80a6`；公开 raw 与本地文件逐字节一致（7,423 字节），公开 HTML 返回 200。镜像保留官网原文、日期和联系方式。
 
 ## 有效决定
 
@@ -86,6 +87,7 @@
 - 为避免引入隐私范围更大的 `tabs` 权限，分析页继续使用 session 范围的标签注册实现复用。
 - 产品名称继续使用 `WebTrace`；旧商店条目和升级兼容性说明可以使用原名称 `TimeTracker`。
 - 2026-09-29 用户明确选择更新既有 TimeTracker 条目，保留扩展 ID `efpighgeknabppbmfjpkfmebmnmckpgj`，并授权 Agent 上传和提交市场。此授权替代此前仅由人工执行商店操作的约定；准备材料、上传草稿或部署官网都不能表述为已经上架新版本。
+- 2026-10-18 用户决定商店主页使用 [GitHub 仓库](https://github.com/zhangrunhao/chrome_plugin_time_tracker)、支持使用 [Issues](https://github.com/zhangrunhao/chrome_plugin_time_tracker/issues)、隐私使用 [PRIVACY.md](https://github.com/zhangrunhao/chrome_plugin_time_tracker/blob/main/PRIVACY.md)。官网保留，本次不修改扩展内政策链接。
 
 ## 当前限制与风险
 
@@ -96,7 +98,7 @@
 - session 标签注册防止正常工具栏操作产生重复分析页，但不会主动关闭用户手工创建的既有重复分析页。
 - 网站排序目前只支持鼠标、触摸或笔等指针操作，没有键盘排序入口；拖动靠近窄屏横向列表边缘时不会自动滚动，需先滚到目标区间再排序。
 - 已收到的顶层非 HTTP/HTTPS 导航会被视为离开统计网站；Chrome 未向当前权限组合暴露的受限内部页导航仍属于平台边界。
-- 2026-09-29 Developer Dashboard 因三个公开 URL 连接超时而阻止提交。本机 GET/HEAD 均返回 HTTP 200，公共 DNS 解析一致，但这些结果不能证明 Google 校验节点可达；云安全组和外部网络连通性仍待确认。
+- 原官网 URL 的 Google 连接超时根因仍未定位。2026-10-18 本机三个 URL 返回 HTTP 200 且 TLS 有效，美国、德国和新加坡节点对隐私页 HEAD 均返回 200；已确认 80/443 公开、UFW 未启用，未发现 nginx 或 iptables 来源拦截。这些结果不能证明 Google 校验节点可达；改用 GitHub 商店链接后已解除阻塞并提交审核。
 - 商店 `Official URL` 下拉列表只有 `None`，已留空；这不能证明域名在所有 Search Console 账号中的验证状态。当前数据分类选择 `Web history`，当日 `User activity` 帮助文本列举点击、鼠标、滚动和键击等，未勾选该项。
 - 2026-09-29 人工验收以用户逐项确认为依据。Agent 的日常 Chrome 控制连接超时，未独立读取验收会话的 `chrome://version` 或加载目录；本机已安装 Chrome 的 bundle 版本为 `154.0.8037.58`。
 - 人工确认仅覆盖本次列出的五项，尚未证明历史周切换等分析页改动全部经过日常 Chrome 人工验收，也未证明最终 ZIP 与用户当时加载的版本一致；最终包与已提交代码的一致性及隔离浏览器验证已另行完成。
@@ -127,6 +129,11 @@ git diff --check
 - 同日同版本隔离 Chromium 检查横向滚动边界：1280、1440、1920px 视口下，两种指标高亮时图表的 `scrollWidth` 与 `clientWidth` 均相等，右轴刻度未超出画布；390px 下图内滚动保留，选点前后滚动位置一致，页面不溢出。
 - 2026-09-29 通过 `npm run capture:store` 在隔离 Chromium 中重新生成两张 1280×800 产品截图，并检查双线图、周切换按钮和更新后的隐私告知；只使用合成网站与访问数据，截图过程无浏览器错误。
 - 2026-09-29 最终 ZIP 完整性、30 个文件的允许清单、与提交 `f2bcd90` 的逐字节一致性、全部解压后 JavaScript 的语法检查通过。使用实际解压目录和隔离 Chromium `151.0.7922.34` 验证启动、更新后的隐私告知、默认未勾选且必填的确认框、新增 `wikipedia.org`、前一周、历史导航按钮启用、回到最新和宽屏无横向溢出；此为自动化验证，不记作日常 Chrome 人工验收。
+
+### 本次文档与商店变更
+
+- 2026-10-18 仅修改公开隐私政策镜像、文档和商店字段，未修改扩展代码，未运行新的自动测试或扩展功能人工验收。当前本机 Chrome bundle 为 `155.0.8059.84`，不据此扩大既有验收范围。
+- 当日回读商店三个 GitHub 链接正确；Package 显示 Draft `1.1.0`、Published `1.0.0`。提交确认保留审核通过后自动发布，成功弹窗为 `Your extension was submitted for review`，关闭后显示 `Pending review` 和 `Item submitted.`。
 
 ### Chrome 验收
 

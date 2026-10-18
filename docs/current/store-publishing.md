@@ -1,8 +1,8 @@
 # Chrome Web Store 发布手册
 
-> 最后更新：2026-09-29（Asia/Shanghai，商店提交阻塞与 Google 问题反馈）；外部要求核验日期见文末。
+> 最后更新：2026-10-18（Asia/Shanghai，GitHub 商店链接与提交审核）；外部要求核验日期见文末。
 
-WebTrace `1.1.0` 已上传到既有 TimeTracker 条目，商店资料、图片、隐私披露和测试说明已保存。2026-09-29 Google 后台因主页、支持页和隐私政策连接超时而禁用提交按钮，尚未提交审核；线上仍是 TimeTracker `1.0.0`。用户已明确选择更新现有条目并授权提交，保留扩展 ID `efpighgeknabppbmfjpkfmebmnmckpgj`。
+WebTrace `1.1.0` 已于 2026-10-18 10:11（Asia/Shanghai）提交审核，后台显示 `Pending review`、`Item submitted.`；已选择审核通过后自动发布。商店三个链接改用公开 GitHub 仓库后解除连接超时阻塞。线上仍是 TimeTracker `1.0.0`，扩展 ID 保持 `efpighgeknabppbmfjpkfmebmnmckpgj`。
 
 ## 当前状态
 
@@ -14,19 +14,21 @@ WebTrace `1.1.0` 已上传到既有 TimeTracker 条目，商店资料、图片�
 | 1280×800 截图与 440×280 宣传图 | 已上传保存 | 两张截图于 2026-09-29 更新为当前双线图和隐私告知，宣传图沿用；只含真实界面与合成数据 |
 | 日常 Chrome 人工验收 | 用户已确认五项通过 | 2026-09-29；具体范围与版本边界见下文 |
 | 上传 ZIP | 已上传并审计 | `release/webtrace-1.1.0.zip`，逐字节匹配提交 `f2bcd90` 的运行文件 |
-| 主页、支持、隐私 URL | 已发布并验证 | 2026-09-29 新文案、中英隐私政策和截图已上线；三个页面及资源正常，桌面与手机宽度的隔离浏览器检查通过 |
-| Developer Dashboard | 草稿已保存，提交受阻 | 2026-09-29 登录核验；草稿 `1.1.0`，线上 `1.0.0`，三个公开 URL 连接超时 |
+| 主页、支持、隐私 URL | GitHub 链接已保存回读 | 2026-10-18 用户决定使用仓库首页、Issues 和 PRIVACY.md；官网保留，扩展内链接不变 |
+| Developer Dashboard | Pending review | 2026-10-18 10:11 提交成功；待审核 `1.1.0`，线上 `1.0.0`，审核通过后自动发布 |
 | Google 问题反馈 | 已发送，没有支持工单号 | 2026-09-29 16:54，通过后台 Give Feedback 发送；页面确认 `Report sent, thank you!` |
 
-### 商店条目与提交阻塞
+### 商店条目与审核状态
 
 - [现有条目](https://chromewebstore.google.com/detail/efpighgeknabppbmfjpkfmebmnmckpgj)的扩展 ID 为 `efpighgeknabppbmfjpkfmebmnmckpgj`；本次作为更新发布，不创建新条目。
 - 已在独立 Chrome for Testing 中逐页回读草稿：描述、分类、语言、四张图片、权限理由、Remote code、数据类别、Limited Use 认证和隐私政策一致；审核说明已保存。定价、可见性和地区仍为免费、公开、全部地区。
 - Package 页显示线上 `1.0.0` 使用 `storage` 和主机权限；草稿 `1.1.0` 还包含 `idle`、`unlimitedStorage`、`webNavigation`，已逐项填写本地统计用途。
-- `Why can't I submit?` 明确列出 Homepage、Support、Privacy policy URL 均为 `Timeout while connecting`；尚未进入提交确认弹窗或审核队列。
-- 当日从本机读取三个最终 URL 均为 HTTP 200，HTTPS 校验通过，Google/Cloudflare 公共 DNS 解析一致且无 AAAA 记录。上述验证不代表 Google 商店校验节点可达，安全组与外部网络连通性仍待确认。
+- 原官网链接曾使 `Why can't I submit?` 列出三项 `Timeout while connecting`。2026-10-18 改用 GitHub 链接并保存后，提交按钮启用；10:11 成功弹窗显示 `Your extension was submitted for review`，关闭后显示 `Pending review`、`Item submitted.`，已进入审核。
+- 2026-10-18 原官网三个 URL 本机 GET/HEAD 均为 HTTP 200、TLS 有效；Google/Cloudflare DNS 一致且无 AAAA，美国、德国和新加坡节点对隐私页 HEAD 均为 200。已确认 80/443 公开、UFW 未启用，未发现 nginx 或 iptables 来源拦截；这些证据不能证明 Google 校验节点可达，原超时根因仍未定位。
 - 2026-09-29 在用户日常 Google Chrome 中核验，一站式支持与后台 Contact Us 均进入帮助页；`Other`、`Item status`、`Policy clarification` 相关分类没有提供邮件工单入口，并提示支持专员无法处理该问题。随后通过后台 `Give Feedback` 发送三条超时报错原文、公开 URL、当日排查结果、联系入口异常说明和后台截图，并允许 Google 就此次问题通过邮件联系。16:54（Asia/Shanghai）页面显示 `Report sent, thank you!`；此为问题反馈成功，不等同于创建正式支持工单、收到人工回复或提交扩展审核。
-- 链接问题解除后，重新保存并回读草稿，确认提交按钮可用，再完成提交确认并记录审核状态；不得把旧版的 `Published - public` 状态当成新版本已经通过审核。
+- 已回读商店三条 GitHub 链接和 Package（Draft `1.1.0`、Published `1.0.0`）。提交确认保留 `Publish WebTrace automatically after it has passed review`；旧版 `Published - public` 不代表新版本已审核通过。
+- 用户明确决定仅替换商店三链接，官网及扩展内政策链接保留。公开隐私镜像提交为 `53b80a6`，与官网原文保持一致；raw 与本地文件逐字节一致（7,423 字节），公开 HTML 返回 200。
+- 今日没有扩展代码改动，未运行新的自动测试或扩展功能人工验收；当前本机 Chrome bundle 为 `155.0.8059.84`。下列 2026-09-29 验证边界保持不变，最终 ZIP 校验与当日一致。
 
 ### 人工验收与最终候选
 
@@ -45,9 +47,9 @@ WebTrace `1.1.0` 已上传到既有 TimeTracker 条目，商店资料、图片�
 - 可见性：`Public`
 - 分发区域：全部可用地区
 - 成人内容：`No`
-- 主页：`https://zhangrh.shop/webtrace/`
-- 支持：`https://zhangrh.shop/webtrace/support/`
-- 隐私政策：`https://zhangrh.shop/webtrace/privacy/`
+- 主页：`https://github.com/zhangrunhao/chrome_plugin_time_tracker`
+- 支持：`https://github.com/zhangrunhao/chrome_plugin_time_tracker/issues`
+- 隐私政策：`https://github.com/zhangrunhao/chrome_plugin_time_tracker/blob/main/PRIVACY.md`
 - 官方网址：当前留空。2026-09-29 Dashboard 下拉列表仅提供 `None`，未选择未经该账号验证的域名。
 
 详细描述：
@@ -201,9 +203,9 @@ unzip -Z1 release/webtrace-1.1.0.zip | sort
 - [x] 2026-09-29 官网更新已发布，公开隐私政策与扩展内显著告知一致，趋势展示说明已同步。
 - [x] Distribution 已核对，Test instructions 已保存并回读一致；不需要账号凭据。
 - [x] 用户授权更新现有条目并提交，Agent 已逐页复核资料。
-- [ ] Google 商店能够访问三个公开 URL，提交按钮可用。
-- [ ] 已决定自动发布或延迟发布。
-- [ ] 完成 `Submit for Review` 并记录后台实际审核状态。
+- [x] 2026-10-18 GitHub 三链接保存回读，提交按钮可用且提交成功。
+- [x] 已选择审核通过后自动发布。
+- [x] 2026-10-18 10:11 完成 `Submit for Review`，后台状态 `Pending review`。
 
 ## 官方依据
 
