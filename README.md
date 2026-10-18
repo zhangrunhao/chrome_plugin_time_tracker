@@ -18,7 +18,7 @@ WebTrace 是一个本地优先的 Chrome Manifest V3 扩展，用来回答：我
 
 记录默认长期保留，直到用户删除对应网站历史或卸载扩展。分析页默认展示最近 14 天，可以按周回看更早记录。新增网站不会追溯当前已打开页面，必须离开后再次进入才会形成新记录。
 
-添加网站前，WebTrace 会在扩展内显著说明记录范围、用途、保留与删除方式，并要求用户主动勾选确认。公开说明见 [隐私政策](https://zhangrh.shop/webtrace/privacy/)。
+添加网站前，WebTrace 会在扩展内显著说明记录范围、用途、保留与删除方式，并要求用户主动勾选确认。公开说明见 [隐私政策](PRIVACY.md)。
 
 ## 安装与使用
 
@@ -42,8 +42,8 @@ npm test
 ## 文档
 
 - [WebTrace 产品主页](https://zhangrh.shop/webtrace/)
-- [支持页面](https://zhangrh.shop/webtrace/support/)
-- [隐私政策](https://zhangrh.shop/webtrace/privacy/)
+- [问题反馈与支持](https://github.com/zhangrunhao/chrome_plugin_time_tracker/issues)
+- [隐私政策](PRIVACY.md)
 - [Chrome Web Store 发布手册](docs/current/store-publishing.md)
 - [商店图片与重现说明](store-assets/README.md)
 - [项目文档入口](docs/README.md)
