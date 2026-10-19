@@ -22,6 +22,10 @@ WebTrace 是一个本地优先的 Chrome Manifest V3 扩展，用来回答：我
 
 ## 安装与使用
 
+从 [Chrome Web Store 安装 WebTrace](https://chromewebstore.google.com/detail/webtrace/efpighgeknabppbmfjpkfmebmnmckpgj)。公开商店页于 2026-10-19 核验为 `1.1.0`。安装后点击工具栏图标，在“管理网站”中阅读并确认本地数据处理说明，再添加网站；从站外重新进入后即可查看统计。
+
+开发时可加载本仓库：
+
 1. 在 Chrome 扩展程序管理页启用“开发者模式”。
 2. 选择“加载已解压的扩展程序”，并选择本仓库目录。
 3. 点击 WebTrace 工具栏图标进入分析页。

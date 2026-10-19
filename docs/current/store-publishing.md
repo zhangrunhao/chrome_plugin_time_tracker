@@ -1,8 +1,8 @@
 # Chrome Web Store 发布手册
 
-> 最后更新：2026-10-18（Asia/Shanghai，GitHub 商店链接与提交审核）；外部要求核验日期见文末。
+> 最后更新：2026-10-19（Asia/Shanghai，公开商店版本与安装入口）；外部要求核验日期见文末。
 
-WebTrace `1.1.0` 已于 2026-10-18 10:11（Asia/Shanghai）提交审核，后台显示 `Pending review`、`Item submitted.`；已选择审核通过后自动发布。商店三个链接改用公开 GitHub 仓库后解除连接超时阻塞。线上仍是 TimeTracker `1.0.0`，扩展 ID 保持 `efpighgeknabppbmfjpkfmebmnmckpgj`。
+WebTrace `1.1.0` 已公开发布。2026-10-19 无登录读取 [Chrome Web Store](https://chromewebstore.google.com/detail/webtrace/efpighgeknabppbmfjpkfmebmnmckpgj) 返回 HTTP 200，页面名称 WebTrace、版本 `1.1.0`、更新日期 October 19, 2026，并显示 `Add to Chrome`。扩展 ID 保持 `efpighgeknabppbmfjpkfmebmnmckpgj`；商店三链接继续使用 GitHub，官网和扩展内隐私链接保留。
 
 ## 当前状态
 
@@ -15,22 +15,23 @@ WebTrace `1.1.0` 已于 2026-10-18 10:11（Asia/Shanghai）提交审核，后台
 | 日常 Chrome 人工验收 | 用户已确认五项通过 | 2026-09-29；具体范围与版本边界见下文 |
 | 上传 ZIP | 已上传并审计 | `release/webtrace-1.1.0.zip`，逐字节匹配提交 `f2bcd90` 的运行文件 |
 | 主页、支持、隐私 URL | GitHub 链接已保存回读 | 2026-10-18 用户决定使用仓库首页、Issues 和 PRIVACY.md；官网保留，扩展内链接不变 |
-| Developer Dashboard | Pending review | 2026-10-18 10:11 提交成功；待审核 `1.1.0`，线上 `1.0.0`，审核通过后自动发布 |
+| 公开商店 | WebTrace `1.1.0` 已发布 | 2026-10-19 无登录 HTTP 200，版本 `1.1.0`、更新日期 October 19, 2026、`Add to Chrome` |
 | Google 问题反馈 | 已发送，没有支持工单号 | 2026-09-29 16:54，通过后台 Give Feedback 发送；页面确认 `Report sent, thank you!` |
 
 ### 商店条目与审核状态
 
-- [现有条目](https://chromewebstore.google.com/detail/efpighgeknabppbmfjpkfmebmnmckpgj)的扩展 ID 为 `efpighgeknabppbmfjpkfmebmnmckpgj`；本次作为更新发布，不创建新条目。
+- [现有条目](https://chromewebstore.google.com/detail/webtrace/efpighgeknabppbmfjpkfmebmnmckpgj)的扩展 ID 为 `efpighgeknabppbmfjpkfmebmnmckpgj`；本次作为更新发布，不创建新条目。
 - 已在独立 Chrome for Testing 中逐页回读草稿：描述、分类、语言、四张图片、权限理由、Remote code、数据类别、Limited Use 认证和隐私政策一致；审核说明已保存。定价、可见性和地区仍为免费、公开、全部地区。
-- Package 页显示线上 `1.0.0` 使用 `storage` 和主机权限；草稿 `1.1.0` 还包含 `idle`、`unlimitedStorage`、`webNavigation`，已逐项填写本地统计用途。
-- 原官网链接曾使 `Why can't I submit?` 列出三项 `Timeout while connecting`。2026-10-18 改用 GitHub 链接并保存后，提交按钮启用；10:11 成功弹窗显示 `Your extension was submitted for review`，关闭后显示 `Pending review`、`Item submitted.`，已进入审核。
+- WebTrace `1.1.0` 相比旧 TimeTracker `1.0.0` 新增 `idle`、`unlimitedStorage`、`webNavigation`，已逐项填写本地统计用途。公开页面核验确认当前版本已是 `1.1.0`，并非仅依据旧条目的全局 Published 状态判断。
+- 原官网链接曾使 `Why can't I submit?` 列出三项 `Timeout while connecting`。2026-10-18 改用 GitHub 链接并保存后，提交按钮启用；10:11 成功弹窗显示 `Your extension was submitted for review`，关闭后显示 `Pending review`、`Item submitted.`，当日进入审核，当前公开版本已更新为 `1.1.0`。
 - 2026-10-18 原官网三个 URL 本机 GET/HEAD 均为 HTTP 200、TLS 有效；Google/Cloudflare DNS 一致且无 AAAA，美国、德国和新加坡节点对隐私页 HEAD 均为 200。已确认 80/443 公开、UFW 未启用，未发现 nginx 或 iptables 来源拦截；这些证据不能证明 Google 校验节点可达，原超时根因仍未定位。
 - 2026-09-29 在用户日常 Google Chrome 中核验，一站式支持与后台 Contact Us 均进入帮助页；`Other`、`Item status`、`Policy clarification` 相关分类没有提供邮件工单入口，并提示支持专员无法处理该问题。随后通过后台 `Give Feedback` 发送三条超时报错原文、公开 URL、当日排查结果、联系入口异常说明和后台截图，并允许 Google 就此次问题通过邮件联系。16:54（Asia/Shanghai）页面显示 `Report sent, thank you!`；此为问题反馈成功，不等同于创建正式支持工单、收到人工回复或提交扩展审核。
-- 已回读商店三条 GitHub 链接和 Package（Draft `1.1.0`、Published `1.0.0`）。提交确认保留 `Publish WebTrace automatically after it has passed review`；旧版 `Published - public` 不代表新版本已审核通过。
+- 2026-10-18 已回读商店三条 GitHub 链接和 Package（Draft `1.1.0`、Published `1.0.0`）。提交确认保留 `Publish WebTrace automatically after it has passed review`；旧版 `Published - public` 不代表新版本已审核通过。
 - 用户明确决定仅替换商店三链接，官网及扩展内政策链接保留。公开隐私镜像提交为 `53b80a6`，与官网原文保持一致；raw 与本地文件逐字节一致（7,423 字节），公开 HTML 返回 200。
-- 今日没有扩展代码改动，未运行新的自动测试或扩展功能人工验收；当前本机 Chrome bundle 为 `155.0.8059.84`。下列 2026-09-29 验证边界保持不变，最终 ZIP 校验与当日一致。
+- 2026-10-18 没有扩展代码改动，未运行新的自动测试或扩展功能人工验收；当前本机 Chrome bundle 为 `155.0.8059.84`。下列 2026-09-29 验证边界保持不变，最终 ZIP 校验与当日一致。
+- 2026-10-19 仅核验公开发布状态并同步文档和安装入口，未重复自动测试、安装或扩展功能人工验收。
 
-### 人工验收与最终候选
+### 人工验收与最终发布包
 
 - 2026-09-29，用户在日常 Google Chrome 中逐项确认：重新加载、隐私政策确认、网站新增、实际计时测试、隐私政策页面均没有问题。
 - 这是用户人工验收证据；Agent 当次未能连接日常 Chrome，未独立核验加载目录或验收会话的浏览器版本。本机 Chrome bundle 为 `154.0.8037.58`，供环境参考。
@@ -205,7 +206,8 @@ unzip -Z1 release/webtrace-1.1.0.zip | sort
 - [x] 用户授权更新现有条目并提交，Agent 已逐页复核资料。
 - [x] 2026-10-18 GitHub 三链接保存回读，提交按钮可用且提交成功。
 - [x] 已选择审核通过后自动发布。
-- [x] 2026-10-18 10:11 完成 `Submit for Review`，后台状态 `Pending review`。
+- [x] 2026-10-18 10:11 完成 `Submit for Review`，当时后台状态 `Pending review`。
+- [x] 2026-10-19 公开商店确认 WebTrace `1.1.0` 已发布并提供 `Add to Chrome`。
 
 ## 官方依据
 

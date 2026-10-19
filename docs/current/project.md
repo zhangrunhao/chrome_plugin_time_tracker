@@ -1,10 +1,10 @@
 # 项目当前状态
 
-> 最后更新：2026-10-18（Asia/Shanghai，GitHub 商店链接与提交审核）；外部状态见各项核验日期。
+> 最后更新：2026-10-19（Asia/Shanghai，公开商店版本与安装入口）；外部状态见各项核验日期。
 
 当前 WebTrace 支持配置多个网站，在本机记录有效打开和有效观看时长；分析页显示今日概览、每屏 14 个本地日的双线趋势和选中日期的逐次访问明细。时间轴支持每次前后移动一周和回到最新；悬停某条线会突出该指标及每天数值，浮层只显示完整日期。左侧网站列表支持长按排序，添加网站前显著披露本地数据处理并要求主动确认。2026-09-29 当前代码自动测试为 158/158，通过隔离 Chromium 专项验证；本次时间轴改动尚未经日常 Chrome 人工验收。
 
-2026-10-18 10:11（Asia/Shanghai），既有 TimeTracker 条目的 WebTrace `1.1.0` 已成功提交审核，后台显示 `Pending review`、`Item submitted.`，并保留审核通过后自动发布。商店主页、支持和隐私政策改用公开 GitHub 仓库链接后解除提交阻塞；线上仍为 TimeTracker `1.0.0`，不能把提交审核视为新版本已上线。最终 ZIP 校验与 2026-09-29 一致；此前人工验收与隔离 Chromium 验证边界不变。
+WebTrace `1.1.0` 已公开发布。2026-10-19 无登录核验 [Chrome Web Store](https://chromewebstore.google.com/detail/webtrace/efpighgeknabppbmfjpkfmebmnmckpgj)：HTTP 200，名称 WebTrace、版本 `1.1.0`、更新日期 October 19, 2026，并显示 `Add to Chrome`。扩展 ID 保持不变；最终 ZIP 与既有功能验收边界不变，本次未重复扩展功能验收。
 
 ## 内容边界
 
@@ -16,7 +16,7 @@
 
 - 扩展名称为 WebTrace，版本 `1.1.0`，采用 Chrome Manifest V3，最低 Chrome 版本为 102。
 - 后台入口是模块型 service worker `background.js`；网页侧 `content.js` 只注入 HTTP/HTTPS 页面，不创建浮窗或其他可见 UI。
-- 权限为 `idle`、`storage`、`unlimitedStorage` 和 `webNavigation`；主机访问范围为 `http://*/*` 与 `https://*/*`，与 WebTrace V1 开发基线相同。相较商店线上旧 TimeTracker `1.0.0` 的 `storage` 和主机权限，本次更新新增 `idle`、`unlimitedStorage`、`webNavigation`，已填写对应理由。
+- 权限为 `idle`、`storage`、`unlimitedStorage` 和 `webNavigation`；主机访问范围为 `http://*/*` 与 `https://*/*`，与 WebTrace V1 开发基线相同。相较旧 TimeTracker `1.0.0` 的 `storage` 和主机权限，本次更新新增 `idle`、`unlimitedStorage`、`webNavigation`，已填写对应理由。
 - manifest 提供 16、32、48、128 四种森林绿与暖象牙色品牌图标；128px 图标四周保留约 16px 透明边距。
 - 扩展不申请 `tabs` 权限。工具栏图标打开或聚焦分析页；分析页用 `chrome.storage.session` 注册自身，关闭或导航离开时清除记录。
 - `chrome.storage.local` 和 `chrome.storage.session` 在后台初始化时限制为 `TRUSTED_CONTEXTS`。
@@ -73,9 +73,9 @@
 - `npm run render:icons` 从可审查的平面母版重现四种图标；宣传图母版由内置 ImageGen 生成，最终素材保存在仓库。
 - [`store-publishing.md`](store-publishing.md) 是商店标题、摘要、详细描述、分类、语言、单一用途、权限理由、隐私实践、URL、测试说明和提交步骤的当前来源。
 - 最终包为 `release/webtrace-1.1.0.zip`，30 个文件、101,723 字节，SHA-256 为 `a50fa052c4dcf26149ccf2b656de392b4b37843040ce3aaee860b93b83c62cf4`（2026-09-29）。全部文件逐字节匹配提交 `f2bcd90` 中的运行文件，包含当前时间轴实现和文案；只含六个入口文件、`src`、`vendor` 和四种图标，`release/` 由 Git 忽略。
-- 2026-09-29 在已登录的 Chrome for Testing 中核验既有[商店条目](https://chromewebstore.google.com/detail/efpighgeknabppbmfjpkfmebmnmckpgj)：线上 TimeTracker `1.0.0`，草稿 WebTrace `1.1.0`。新包、图标、两张截图、宣传图、描述、权限理由、隐私披露和测试说明均已上传保存；分发为免费、公开、全部地区。详细状态以 [`store-publishing.md`](store-publishing.md) 为准。
+- 2026-10-19 无登录核验公开[商店条目](https://chromewebstore.google.com/detail/webtrace/efpighgeknabppbmfjpkfmebmnmckpgj)：WebTrace `1.1.0` 已提供安装，更新日期为 October 19, 2026。商店链接使用 GitHub；详细发布资料见 [`store-publishing.md`](store-publishing.md)。
 - `zhangrh.shop` 已公开部署[主页](https://zhangrh.shop/webtrace/)、[支持页](https://zhangrh.shop/webtrace/support/)和[隐私政策](https://zhangrh.shop/webtrace/privacy/)；2026-09-29 发布后，隔离 Chromium `151.0.7922.34` 在 1280×800 与 390×844 视口核验新文案、政策日期和截图，无鉴权、404、横向溢出、图片加载失败或控制台错误、警告。公网 HTML 与静态资源内容和本地发布产物一致。
-- 同日官网首页、支持、中英隐私政策、Hub 作品卡及合成截图均已上线；文案说明默认最近 14 天与按周回看，数据处理范围不变。官网内容和发布验证的权威来源为 `zhangrh.shop` 仓库的 `docs/current/project.md` 与 `docs/current/deployment.md`。
+- 2026-09-29 官网首页、支持、中英隐私政策、Hub 作品卡及合成截图均已上线；文案说明默认最近 14 天与按周回看，数据处理范围不变。官网内容和发布验证的权威来源为 `zhangrh.shop` 仓库的 `docs/current/project.md` 与 `docs/current/deployment.md`。
 - 2026-10-18 已发布官网隐私政策的 [GitHub 镜像](../../PRIVACY.md)，提交 `53b80a6`；公开 raw 与本地文件逐字节一致（7,423 字节），公开 HTML 返回 200。镜像保留官网原文、日期和联系方式。
 
 ## 有效决定
@@ -98,7 +98,7 @@
 - session 标签注册防止正常工具栏操作产生重复分析页，但不会主动关闭用户手工创建的既有重复分析页。
 - 网站排序目前只支持鼠标、触摸或笔等指针操作，没有键盘排序入口；拖动靠近窄屏横向列表边缘时不会自动滚动，需先滚到目标区间再排序。
 - 已收到的顶层非 HTTP/HTTPS 导航会被视为离开统计网站；Chrome 未向当前权限组合暴露的受限内部页导航仍属于平台边界。
-- 原官网 URL 的 Google 连接超时根因仍未定位。2026-10-18 本机三个 URL 返回 HTTP 200 且 TLS 有效，美国、德国和新加坡节点对隐私页 HEAD 均返回 200；已确认 80/443 公开、UFW 未启用，未发现 nginx 或 iptables 来源拦截。这些结果不能证明 Google 校验节点可达；改用 GitHub 商店链接后已解除阻塞并提交审核。
+- 原官网 URL 的 Google 连接超时根因仍未定位。2026-10-18 本机三个 URL 返回 HTTP 200 且 TLS 有效，美国、德国和新加坡节点对隐私页 HEAD 均返回 200；已确认 80/443 公开、UFW 未启用，未发现 nginx 或 iptables 来源拦截。这些结果不能证明 Google 校验节点可达；改用 GitHub 商店链接后已解除阻塞，当前版本已公开发布。
 - 商店 `Official URL` 下拉列表只有 `None`，已留空；这不能证明域名在所有 Search Console 账号中的验证状态。当前数据分类选择 `Web history`，当日 `User activity` 帮助文本列举点击、鼠标、滚动和键击等，未勾选该项。
 - 2026-09-29 人工验收以用户逐项确认为依据。Agent 的日常 Chrome 控制连接超时，未独立读取验收会话的 `chrome://version` 或加载目录；本机已安装 Chrome 的 bundle 版本为 `154.0.8037.58`。
 - 人工确认仅覆盖本次列出的五项，尚未证明历史周切换等分析页改动全部经过日常 Chrome 人工验收，也未证明最终 ZIP 与用户当时加载的版本一致；最终包与已提交代码的一致性及隔离浏览器验证已另行完成。
@@ -130,7 +130,11 @@ git diff --check
 - 2026-09-29 通过 `npm run capture:store` 在隔离 Chromium 中重新生成两张 1280×800 产品截图，并检查双线图、周切换按钮和更新后的隐私告知；只使用合成网站与访问数据，截图过程无浏览器错误。
 - 2026-09-29 最终 ZIP 完整性、30 个文件的允许清单、与提交 `f2bcd90` 的逐字节一致性、全部解压后 JavaScript 的语法检查通过。使用实际解压目录和隔离 Chromium `151.0.7922.34` 验证启动、更新后的隐私告知、默认未勾选且必填的确认框、新增 `wikipedia.org`、前一周、历史导航按钮启用、回到最新和宽屏无横向溢出；此为自动化验证，不记作日常 Chrome 人工验收。
 
-### 本次文档与商店变更
+### 发布状态核验
+
+- 2026-10-19 读取公开商店 HTML，核验 HTTP 200、WebTrace 名称、版本 `1.1.0`、更新日期 October 19, 2026 及 `Add to Chrome` 按钮；未把公开页面核验视为安装或扩展功能验收。
+
+### 既有文档与商店变更
 
 - 2026-10-18 仅修改公开隐私政策镜像、文档和商店字段，未修改扩展代码，未运行新的自动测试或扩展功能人工验收。当前本机 Chrome bundle 为 `155.0.8059.84`，不据此扩大既有验收范围。
 - 当日回读商店三个 GitHub 链接正确；Package 显示 Draft `1.1.0`、Published `1.0.0`。提交确认保留审核通过后自动发布，成功弹窗为 `Your extension was submitted for review`，关闭后显示 `Pending review` 和 `Item submitted.`。
